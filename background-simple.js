@@ -14,6 +14,7 @@ chrome.contextMenus.onClicked.addListener((info) => {
       });
     }
   }
+  // else: click on a noisy-tab-N parent label (current tab or background tab title) — no action
 });
 
 // Background service worker for Where's the Noise extension
@@ -21,7 +22,6 @@ chrome.contextMenus.onClicked.addListener((info) => {
 
 // Update badge on install and startup
 chrome.runtime.onInstalled.addListener(() => {
-  console.log("Where's the Noise extension installed");
   chrome.contextMenus.create({
     id: "find-noisy-tabs",
     title: "Find Noisy Tabs",
@@ -36,24 +36,19 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 
 chrome.runtime.onStartup.addListener(() => {
-  console.log('Extension starting up');
   updateBadge();
   updateMenuSilently();
 });
 
 // Listen for tab close to update badge
 chrome.tabs.onRemoved.addListener(() => {
-  console.log('Tab closed, updating badge...');
   scheduleBadgeUpdate();
   scheduleMenuUpdate();
 });
 
 // Listen for tab updates to track audio state
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  // Check if audio state changed
   if (changeInfo.audible !== undefined) {
-    console.log(`Tab ${tabId} audio state: ${changeInfo.audible ? 'playing' : 'silent'}`);
-    // Update badge when audio state changes
     scheduleBadgeUpdate();
     scheduleMenuUpdate();
   }
@@ -102,24 +97,27 @@ function scheduleMenuUpdate() {
   }, 500);
 }
 
+async function buildNoisyTabsList() {
+  const allTabs = await chrome.tabs.query({});
+  const [currentActiveTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  const noisyTabsList = [];
+  for (const tab of allTabs) {
+    if (!tab.url || !tab.url.startsWith('http')) continue;
+    if (tab.audible) {
+      noisyTabsList.push({
+        id: tab.id,
+        title: tab.title || 'Untitled',
+        muted: tab.mutedInfo?.muted || false,
+        isCurrentTab: currentActiveTab && tab.id === currentActiveTab.id
+      });
+    }
+  }
+  return noisyTabsList;
+}
+
 async function updateMenuSilently() {
   try {
-    const allTabs = await chrome.tabs.query({});
-    const [currentActiveTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-
-    const noisyTabsList = [];
-
-    for (const tab of allTabs) {
-      if (!tab.url || !tab.url.startsWith('http')) continue;
-      if (tab.audible) {
-        noisyTabsList.push({
-          id: tab.id,
-          title: tab.title || 'Untitled',
-          muted: tab.mutedInfo?.muted || false,
-          isCurrentTab: currentActiveTab && tab.id === currentActiveTab.id
-        });
-      }
-    }
+    const noisyTabsList = await buildNoisyTabsList();
 
     if (noisyTabsList.length === 0) {
       // Reset to initial state — just the root item
@@ -140,23 +138,7 @@ async function updateMenuSilently() {
 
 async function scanAndShowResults() {
   try {
-    const allTabs = await chrome.tabs.query({});
-    const [currentActiveTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-
-    const noisyTabsList = [];
-
-    for (const tab of allTabs) {
-      if (!tab.url || !tab.url.startsWith('http')) continue;
-      if (tab.audible) {
-        noisyTabsList.push({
-          id: tab.id,
-          title: tab.title || 'Untitled',
-          muted: tab.mutedInfo?.muted || false,
-          isCurrentTab: currentActiveTab && tab.id === currentActiveTab.id
-        });
-      }
-    }
-
+    const noisyTabsList = await buildNoisyTabsList();
     const backgroundNoisyTabs = noisyTabsList.filter(t => !t.isCurrentTab);
 
     if (noisyTabsList.length === 0) {
