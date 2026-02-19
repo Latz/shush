@@ -189,7 +189,8 @@ function showNoisyTabsInMenu(noisyTabsList) {
       }, () => { if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError); });
 
       noisyTabsList.forEach((tab) => {
-        const tabTitle = tab.title.length > 30 ? tab.title.substring(0, 27) + '...' : tab.title;
+        const cleanTitle = tab.title.replace(/^\(\d+\)\s*/, '');
+        const tabTitle = cleanTitle.length > 30 ? cleanTitle.substring(0, 27) + '...' : cleanTitle;
         const itemId = `noisy-tab-${tab.id}`;
 
         chrome.contextMenus.create({

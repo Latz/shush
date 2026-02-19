@@ -53,7 +53,8 @@ async function loadNoisyTabs() {
       // Show noisy tabs
       content.innerHTML = '';
       noisyTabsList.forEach(tab => {
-        const tabTitle = tab.title.length > 30 ? tab.title.substring(0, 27) + '...' : tab.title;
+        const cleanTitle = tab.title.replace(/^\(\d+\)\s*/, '');
+        const tabTitle = cleanTitle.length > 30 ? cleanTitle.substring(0, 27) + '...' : cleanTitle;
 
         const item = document.createElement('div');
         item.className = 'tab-item';
@@ -68,7 +69,7 @@ async function loadNoisyTabs() {
 
         const titleDiv = document.createElement('div');
         titleDiv.className = 'tab-title';
-        titleDiv.title = tab.title;
+        titleDiv.title = cleanTitle;
         titleDiv.textContent = tabTitle;
         item.appendChild(titleDiv);
 
