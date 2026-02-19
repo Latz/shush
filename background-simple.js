@@ -42,17 +42,20 @@ chrome.runtime.onInstalled.addListener(() => {
     }
   });
   updateBadge();
+  updateMenuSilently();
 });
 
 chrome.runtime.onStartup.addListener(() => {
   console.log('Extension starting up');
   updateBadge();
+  updateMenuSilently();
 });
 
 // Listen for tab close to update badge
 chrome.tabs.onRemoved.addListener(() => {
   console.log('Tab closed, updating badge...');
   scheduleBadgeUpdate();
+  scheduleMenuUpdate();
 });
 
 // Listen for tab updates to track audio state
@@ -62,12 +65,14 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     console.log(`Tab ${tabId} audio state: ${changeInfo.audible ? 'playing' : 'silent'}`);
     // Update badge when audio state changes
     scheduleBadgeUpdate();
+    scheduleMenuUpdate();
   }
 });
 
 // Listen for tab activation to update badge
 chrome.tabs.onActivated.addListener(() => {
   updateBadge();
+  scheduleMenuUpdate();
 });
 
 // Update the browser action badge with audio count
@@ -97,6 +102,54 @@ function scheduleBadgeUpdate() {
   badgeUpdateTimeout = setTimeout(() => {
     updateBadge();
   }, 500);
+}
+
+let menuUpdateTimeout;
+function scheduleMenuUpdate() {
+  clearTimeout(menuUpdateTimeout);
+  menuUpdateTimeout = setTimeout(() => {
+    updateMenuSilently();
+  }, 500);
+}
+
+async function updateMenuSilently() {
+  try {
+    const allTabs = await chrome.tabs.query({});
+    const currentWindow = await chrome.windows.getCurrent({ populate: true });
+    const currentActiveTab = currentWindow.tabs.find(t => t.active);
+
+    const noisyTabsList = [];
+
+    for (const tab of allTabs) {
+      if (!tab.url || !tab.url.startsWith('http')) continue;
+      if (tab.audible) {
+        const isActiveInCurrentWindow = currentActiveTab && tab.id === currentActiveTab.id;
+        if (!isActiveInCurrentWindow) {
+          noisyTabsList.push({
+            id: tab.id,
+            title: tab.title || 'Untitled',
+            url: tab.url,
+            muted: tab.mutedInfo?.muted || false
+          });
+        }
+      }
+    }
+
+    if (noisyTabsList.length === 0) {
+      // Reset to initial state — just the root item
+      chrome.contextMenus.removeAll(() => {
+        chrome.contextMenus.create({
+          id: "find-noisy-tabs",
+          title: "Find Noisy Tabs",
+          contexts: ["all"]
+        }, () => { if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError); });
+      });
+    } else {
+      await showNoisyTabsInMenu(noisyTabsList);
+    }
+  } catch (error) {
+    console.error('Menu update error:', error);
+  }
 }
 
 async function scanAndShowResults() {
