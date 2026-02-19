@@ -3,7 +3,16 @@
 
 // Update badge on install and startup
 chrome.runtime.onInstalled.addListener(() => {
-  console.log('Where\'s the Noise extension installed');
+  console.log("Where's the Noise extension installed");
+  chrome.contextMenus.create({
+    id: "find-noisy-tabs",
+    title: "Find Noisy Tabs",
+    contexts: ["all"]
+  }, () => {
+    if (chrome.runtime.lastError) {
+      console.error('Error creating context menu:', chrome.runtime.lastError);
+    }
+  });
   updateBadge();
 });
 
