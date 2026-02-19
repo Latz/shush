@@ -198,45 +198,48 @@ async function scanAndShowResults() {
 function showNoisyTabsInMenu(noisyTabsList) {
   return new Promise((resolve) => {
     chrome.contextMenus.removeAll(() => {
-    chrome.contextMenus.create({
-      id: "find-noisy-tabs",
-      title: "Find Noisy Tabs",
-      contexts: ["all"]
-    }, () => { if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError); });
-
-    chrome.contextMenus.create({
-      id: "separator",
-      type: "separator",
-      contexts: ["all"]
-    }, () => { if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError); });
-
-    noisyTabsList.forEach((tab) => {
-      const tabTitle = tab.title.length > 30 ? tab.title.substring(0, 27) + '...' : tab.title;
-      const itemId = `noisy-tab-${tab.id}`;
-
       chrome.contextMenus.create({
-        id: itemId,
-        title: `${tabTitle}${tab.isCurrentTab ? ' (current tab)' : ''}${tab.muted ? ' (muted)' : ''}`,
+        id: "find-noisy-tabs",
+        title: "Find Noisy Tabs",
         contexts: ["all"]
       }, () => { if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError); });
 
-      if (!tab.isCurrentTab) {
+      chrome.contextMenus.create({
+        id: "separator",
+        type: "separator",
+        contexts: ["all"]
+      }, () => { if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError); });
+
+      noisyTabsList.forEach((tab) => {
+        const tabTitle = tab.title.length > 30 ? tab.title.substring(0, 27) + '...' : tab.title;
+        const itemId = `noisy-tab-${tab.id}`;
+
         chrome.contextMenus.create({
-          id: `${itemId}-switch`,
-          parentId: itemId,
-          title: "Switch to Tab",
+          id: itemId,
+          title: `${tabTitle}${tab.isCurrentTab ? ' (current tab)' : ''}${tab.muted ? ' (muted)' : ''}`,
           contexts: ["all"]
         }, () => { if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError); });
 
-        chrome.contextMenus.create({
-          id: `${itemId}-mute`,
-          parentId: itemId,
-          title: tab.muted ? "Unmute Tab" : "Mute Tab",
-          contexts: ["all"]
-        }, () => { if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError); });
-      }
-    });
+        if (!tab.isCurrentTab) {
+          chrome.contextMenus.create({
+            id: `${itemId}-switch`,
+            parentId: itemId,
+            title: "Switch to Tab",
+            contexts: ["all"]
+          }, () => { if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError); });
 
+          chrome.contextMenus.create({
+            id: `${itemId}-mute`,
+            parentId: itemId,
+            title: tab.muted ? "Unmute Tab" : "Mute Tab",
+            contexts: ["all"]
+          }, () => { if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError); });
+        }
+      });
+
+      // Chrome serialises contextMenus operations within a single callback, so
+      // resolve() is called after all creates have been queued and will execute
+      // in order — no need to await each individual create.
       resolve();
     });
   });
