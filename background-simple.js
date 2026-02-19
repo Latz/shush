@@ -26,11 +26,6 @@ chrome.contextMenus.onClicked.addListener((info) => {
   }
 });
 
-chrome.contextMenus.onShown.addListener(async (info) => {
-  await scanAndShowResults();
-  chrome.contextMenus.refresh();
-});
-
 // Background service worker for Where's the Noise extension
 // Handles badge tracking and context menu interactions
 
