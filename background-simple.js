@@ -216,19 +216,21 @@ function showNoisyTabsInMenu(noisyTabsList) {
         contexts: ["all"]
       }, () => { if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError); });
 
-      chrome.contextMenus.create({
-        id: `${itemId}-switch`,
-        parentId: itemId,
-        title: "Switch to Tab",
-        contexts: ["all"]
-      }, () => { if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError); });
+      if (!tab.isCurrentTab) {
+        chrome.contextMenus.create({
+          id: `${itemId}-switch`,
+          parentId: itemId,
+          title: "Switch to Tab",
+          contexts: ["all"]
+        }, () => { if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError); });
 
-      chrome.contextMenus.create({
-        id: `${itemId}-mute`,
-        parentId: itemId,
-        title: tab.muted ? "Unmute Tab" : "Mute Tab",
-        contexts: ["all"]
-      }, () => { if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError); });
+        chrome.contextMenus.create({
+          id: `${itemId}-mute`,
+          parentId: itemId,
+          title: tab.muted ? "Unmute Tab" : "Mute Tab",
+          contexts: ["all"]
+        }, () => { if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError); });
+      }
     });
 
       resolve();
