@@ -26,6 +26,11 @@ chrome.contextMenus.onClicked.addListener((info) => {
   }
 });
 
+chrome.contextMenus.onShown.addListener(async (info) => {
+  await scanAndShowResults();
+  chrome.contextMenus.refresh();
+});
+
 // Background service worker for Where's the Noise extension
 // Handles badge tracking and context menu interactions
 
@@ -139,7 +144,7 @@ async function scanAndShowResults() {
         message: 'All audio is coming from the current tab.'
       });
     } else {
-      showNoisyTabsInMenu(noisyTabsList);
+      await showNoisyTabsInMenu(noisyTabsList);
     }
   } catch (error) {
     console.error('Scan error:', error);
@@ -157,7 +162,8 @@ async function scanAndShowResults() {
 // remain expanded until the user clicks "Find Noisy Tabs" again. This is an
 // unavoidable consequence of storing menu state only in Chrome's context menu registry.
 function showNoisyTabsInMenu(noisyTabsList) {
-  chrome.contextMenus.removeAll(() => {
+  return new Promise((resolve) => {
+    chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({
       id: "find-noisy-tabs",
       title: "Find Noisy Tabs",
@@ -206,5 +212,8 @@ function showNoisyTabsInMenu(noisyTabsList) {
       title: "Close Menu",
       contexts: ["all"]
     }, () => { if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError); });
+
+      resolve();
+    });
   });
 }
