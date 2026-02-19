@@ -1,7 +1,11 @@
 <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
   <rect width="48" height="48" rx="8" fill="url(#grad1)"/>
-  <path d="M24 12L12 20L24 28L36 20L24 12Z" fill="white"/>
-  <path d="M12 32L24 40L36 32" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Speaker body -->
+  <path d="M 8,20 L 17,20 L 30,12 L 30,36 L 17,28 L 8,28 Z" fill="white"/>
+  <!-- Sound waves -->
+  <path d="M 35,20 A 7,7 0 0,1 35,28" stroke="white" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+  <path d="M 38,17 A 11,11 0 0,1 38,31" stroke="white" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+  <path d="M 41,14 A 15,15 0 0,1 41,34" stroke="white" stroke-width="2.5" fill="none" stroke-linecap="round"/>
   <defs>
     <linearGradient id="grad1" x1="0" y1="0" x2="48" y2="48">
       <stop offset="0%" stop-color="#667eea"/>

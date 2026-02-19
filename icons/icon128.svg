@@ -1,7 +1,9 @@
 <svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="128" height="128" rx="16" fill="url(#grad1)"/>
-  <path d="M64 32L32 56L64 80L96 56L64 32Z" fill="white"/>
-  <path d="M32 88L64 112L96 88" stroke="white" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect width="128" height="128" rx="21" fill="url(#grad1)"/>
+  <path d="M 21,53 L 45,53 L 80,32 L 80,96 L 45,75 L 21,75 Z" fill="white"/>
+  <path d="M 93,53 A 19,19 0 0,1 93,75" stroke="white" stroke-width="6.5" fill="none" stroke-linecap="round"/>
+  <path d="M 101,45 A 29,29 0 0,1 101,83" stroke="white" stroke-width="6.5" fill="none" stroke-linecap="round"/>
+  <path d="M 109,37 A 40,40 0 0,1 109,91" stroke="white" stroke-width="6.5" fill="none" stroke-linecap="round"/>
   <defs>
     <linearGradient id="grad1" x1="0" y1="0" x2="128" y2="128">
       <stop offset="0%" stop-color="#667eea"/>
