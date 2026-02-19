@@ -1,4 +1,4 @@
-chrome.contextMenus.onClicked.addListener((info, tab) => {
+chrome.contextMenus.onClicked.addListener((info) => {
   if (info.menuItemId === "find-noisy-tabs") {
     scanAndShowResults();
   } else if (info.menuItemId === "close-menu") {
@@ -10,10 +10,14 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
       });
     });
   } else if (info.menuItemId.endsWith("-switch")) {
-    const tabId = parseInt(info.menuItemId.replace("-switch", "").replace("noisy-tab-", ""));
-    if (tabId) chrome.tabs.update(tabId, { active: true });
+    const tabId = parseInt(info.menuItemId.replace("-switch", "").replace("noisy-tab-", ""), 10);
+    if (tabId) {
+      chrome.tabs.get(tabId, (t) => {
+        if (t) chrome.tabs.update(tabId, { active: true });
+      });
+    }
   } else if (info.menuItemId.endsWith("-mute")) {
-    const tabId = parseInt(info.menuItemId.replace("-mute", "").replace("noisy-tab-", ""));
+    const tabId = parseInt(info.menuItemId.replace("-mute", "").replace("noisy-tab-", ""), 10);
     if (tabId) {
       chrome.tabs.get(tabId, (t) => {
         if (t) chrome.tabs.update(tabId, { muted: !t.mutedInfo?.muted });
@@ -23,7 +27,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 });
 
 // Background service worker for Where's the Noise extension
-// Updated to use popup instead of context menu (to avoid Chrome caching issues)
+// Handles badge tracking and context menu interactions
 
 // Update badge on install and startup
 chrome.runtime.onInstalled.addListener(() => {
