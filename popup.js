@@ -88,9 +88,12 @@ async function loadNoisyTabs() {
         const muteBtn = document.createElement('button');
         muteBtn.className = tab.muted ? 'unmute-btn' : 'mute-btn';
         muteBtn.textContent = tab.muted ? 'Unmute' : 'Mute';
-        muteBtn.addEventListener('click', () => {
-          chrome.tabs.update(tab.id, { muted: !tab.muted });
-          window.close();
+        muteBtn.addEventListener('click', async () => {
+          const nowMuted = !tab.muted;
+          await chrome.tabs.update(tab.id, { muted: nowMuted });
+          tab.muted = nowMuted;
+          muteBtn.textContent = nowMuted ? 'Unmute' : 'Mute';
+          muteBtn.className = nowMuted ? 'unmute-btn' : 'mute-btn';
         });
         actions.appendChild(muteBtn);
 
