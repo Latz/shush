@@ -116,14 +116,13 @@ async function updateMenuSilently() {
       if (!tab.url || !tab.url.startsWith('http')) continue;
       if (tab.audible) {
         const isActiveInCurrentWindow = currentActiveTab && tab.id === currentActiveTab.id;
-        if (!isActiveInCurrentWindow) {
-          noisyTabsList.push({
-            id: tab.id,
-            title: tab.title || 'Untitled',
-            url: tab.url,
-            muted: tab.mutedInfo?.muted || false
-          });
-        }
+        noisyTabsList.push({
+          id: tab.id,
+          title: tab.title || 'Untitled',
+          url: tab.url,
+          muted: tab.mutedInfo?.muted || false,
+          isCurrentTab: isActiveInCurrentWindow
+        });
       }
     }
 
@@ -156,32 +155,23 @@ async function scanAndShowResults() {
     for (const tab of allTabs) {
       if (!tab.url || !tab.url.startsWith('http')) continue;
       if (tab.audible) {
-        totalAudioTabs++;
         const isActiveInCurrentWindow = currentActiveTab && tab.id === currentActiveTab.id;
-        if (!isActiveInCurrentWindow) {
-          noisyTabsList.push({
-            id: tab.id,
-            title: tab.title || 'Untitled',
-            url: tab.url,
-            muted: tab.mutedInfo?.muted || false
-          });
-        }
+        noisyTabsList.push({
+          id: tab.id,
+          title: tab.title || 'Untitled',
+          url: tab.url,
+          muted: tab.mutedInfo?.muted || false,
+          isCurrentTab: isActiveInCurrentWindow
+        });
       }
     }
 
-    if (totalAudioTabs === 0) {
+    if (noisyTabsList.length === 0) {
       chrome.notifications.create({
         type: 'basic',
         iconUrl: 'icons/icon48.png',
         title: "Where's the Noise",
         message: 'No tabs are playing audio. All quiet!'
-      });
-    } else if (noisyTabsList.length === 0) {
-      chrome.notifications.create({
-        type: 'basic',
-        iconUrl: 'icons/icon48.png',
-        title: "Where's the Noise",
-        message: 'All audio is coming from the current tab.'
       });
     } else {
       await showNoisyTabsInMenu(noisyTabsList);
@@ -222,7 +212,7 @@ function showNoisyTabsInMenu(noisyTabsList) {
 
       chrome.contextMenus.create({
         id: itemId,
-        title: `${tabTitle}${tab.muted ? ' (muted)' : ''}`,
+        title: `${tabTitle}${tab.isCurrentTab ? ' (current tab)' : ''}${tab.muted ? ' (muted)' : ''}`,
         contexts: ["all"]
       }, () => { if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError); });
 
