@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Where's the Noise</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      width: 380px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      color: #fff;
+      padding: 16px;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .header h1 {
+      font-size: 18px;
+      font-weight: 600;
+      background: linear-gradient(135deg, #ef4444 0%, #f59e0b 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .icon {
+      width: 24px;
+      height: 24px;
+    }
+
+    .status {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 16px;
+      text-align: center;
+    }
+
+    .status.listening {
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
+    }
+
+    .results {
+      display: none;
+    }
+
+    .results.visible {
+      display: block;
+    }
+
+    .noisy-tab {
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 10px;
+      transition: background 0.2s;
+      cursor: pointer;
+    }
+
+    .noisy-tab:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .tab-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+
+    .tab-title {
+      font-weight: 600;
+      font-size: 13px;
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .tab-url {
+      font-size: 11px;
+      color: #a0a0a0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .tab-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .tab-btn {
+      padding: 4px 10px;
+      font-size: 11px;
+      border-radius: 4px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: transparent;
+      color: white;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .tab-btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.4);
+    }
+
+    .tab-btn.mute {
+      border-color: #ef4444;
+      color: #ef4444;
+    }
+
+    .tab-btn.mute:hover {
+      background: rgba(239, 68, 68, 0.2);
+    }
+
+    .tab-btn.unmute {
+      border-color: #10b981;
+      color: #10b981;
+    }
+
+    .tab-btn.unmute:hover {
+      background: rgba(16, 185, 129, 0.2);
+    }
+
+    .tab-btn.switch {
+      border-color: #667eea;
+      color: #667eea;
+    }
+
+    .tab-btn.switch:hover {
+      background: rgba(102, 126, 234, 0.2);
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 20px;
+      color: #a0a0a0;
+      font-size: 13px;
+    }
+
+    .empty-state svg {
+      width: 48px;
+      height: 48px;
+      margin-bottom: 8px;
+      opacity: 0.5;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M12 2v20M2 12h20M4.93 4.93l14.14 14.14M19.07 4.93L4.93 19.07"/>
+    </svg>
+    <h1>Where's the Noise</h1>
+  </div>
+
+  <div class="status listening" id="status">
+    Scanning for audio...
+  </div>
+
+  <div class="results" id="results">
+    <div id="noisyTabs"></div>
+  </div>
+
+  <div class="empty-state" id="emptyState">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+    </svg>
+    <div>No noisy tabs detected.<br>All quiet! 🎵</div>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>
