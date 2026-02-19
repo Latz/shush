@@ -51,46 +51,50 @@ async function loadNoisyTabs() {
       content.innerHTML = '<div class="no-tabs">All audio is coming from the current tab.</div>';
     } else {
       // Show noisy tabs
-      let html = '';
+      content.innerHTML = '';
       noisyTabsList.forEach(tab => {
         const tabTitle = tab.title.length > 30 ? tab.title.substring(0, 27) + '...' : tab.title;
-        const faviconHtml = tab.favIconUrl ? `<img class="tab-favicon" src="${tab.favIconUrl}">` : '';
-        html += `
-          <div class="tab-item">
-            ${faviconHtml}
-            <div class="tab-title" title="${tab.title}">${tabTitle}</div>
-            <div class="tab-actions">
-              <button class="switch-btn" data-tab-id="${tab.id}">Switch</button>
-              <button class="${tab.muted ? 'unmute-btn' : 'mute-btn'}" data-tab-id="${tab.id}" data-action="${tab.muted ? 'unmute' : 'mute'}">
-                ${tab.muted ? 'Unmute' : 'Mute'}
-              </button>
-            </div>
-          </div>
-        `;
-      });
-      content.innerHTML = html;
 
-      // Hide favicons that fail to load (inline onerror is blocked by MV3 CSP)
-      document.querySelectorAll('img.tab-favicon').forEach(img => {
-        img.addEventListener('error', () => { img.style.visibility = 'hidden'; });
-      });
+        const item = document.createElement('div');
+        item.className = 'tab-item';
 
-      // Add event listeners
-      document.querySelectorAll('.switch-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-          const tabId = parseInt(e.target.dataset.tabId);
-          chrome.tabs.update(tabId, { active: true });
+        if (tab.favIconUrl) {
+          const img = document.createElement('img');
+          img.className = 'tab-favicon';
+          img.src = tab.favIconUrl;
+          img.addEventListener('error', () => { img.style.visibility = 'hidden'; });
+          item.appendChild(img);
+        }
+
+        const titleDiv = document.createElement('div');
+        titleDiv.className = 'tab-title';
+        titleDiv.title = tab.title;
+        titleDiv.textContent = tabTitle;
+        item.appendChild(titleDiv);
+
+        const actions = document.createElement('div');
+        actions.className = 'tab-actions';
+
+        const switchBtn = document.createElement('button');
+        switchBtn.className = 'switch-btn';
+        switchBtn.textContent = 'Switch';
+        switchBtn.addEventListener('click', () => {
+          chrome.tabs.update(tab.id, { active: true });
           window.close();
         });
-      });
+        actions.appendChild(switchBtn);
 
-      document.querySelectorAll('.mute-btn, .unmute-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-          const tabId = parseInt(e.target.dataset.tabId);
-          const action = e.target.dataset.action;
-          chrome.tabs.update(tabId, { muted: action === 'mute' });
+        const muteBtn = document.createElement('button');
+        muteBtn.className = tab.muted ? 'unmute-btn' : 'mute-btn';
+        muteBtn.textContent = tab.muted ? 'Unmute' : 'Mute';
+        muteBtn.addEventListener('click', () => {
+          chrome.tabs.update(tab.id, { muted: !tab.muted });
           window.close();
         });
+        actions.appendChild(muteBtn);
+
+        item.appendChild(actions);
+        content.appendChild(item);
       });
     }
   } catch (error) {
