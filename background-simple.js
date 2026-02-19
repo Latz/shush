@@ -98,3 +98,56 @@ function scheduleBadgeUpdate() {
     updateBadge();
   }, 500);
 }
+
+async function scanAndShowResults() {
+  try {
+    const allTabs = await chrome.tabs.query({});
+    const currentWindow = await chrome.windows.getCurrent({ populate: true });
+    const currentActiveTab = currentWindow.tabs.find(t => t.active);
+
+    const noisyTabsList = [];
+    let totalAudioTabs = 0;
+
+    for (const tab of allTabs) {
+      if (!tab.url || !tab.url.startsWith('http')) continue;
+      if (tab.audible) {
+        totalAudioTabs++;
+        const isActiveInCurrentWindow = currentActiveTab && tab.id === currentActiveTab.id;
+        if (!isActiveInCurrentWindow) {
+          noisyTabsList.push({
+            id: tab.id,
+            title: tab.title || 'Untitled',
+            url: tab.url,
+            muted: tab.mutedInfo?.muted || false
+          });
+        }
+      }
+    }
+
+    if (totalAudioTabs === 0) {
+      chrome.notifications.create({
+        type: 'basic',
+        iconUrl: 'icons/icon48.png',
+        title: "Where's the Noise",
+        message: 'No tabs are playing audio. All quiet!'
+      });
+    } else if (noisyTabsList.length === 0) {
+      chrome.notifications.create({
+        type: 'basic',
+        iconUrl: 'icons/icon48.png',
+        title: "Where's the Noise",
+        message: 'All audio is coming from the current tab.'
+      });
+    } else {
+      showNoisyTabsInMenu(noisyTabsList);
+    }
+  } catch (error) {
+    console.error('Scan error:', error);
+    chrome.notifications.create({
+      type: 'basic',
+      iconUrl: 'icons/icon48.png',
+      title: "Where's the Noise",
+      message: 'Error scanning tabs. Please try again.'
+    });
+  }
+}
