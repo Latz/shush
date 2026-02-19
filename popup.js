@@ -34,6 +34,7 @@ async function loadNoisyTabs() {
             id: tab.id,
             title: tab.title || 'Untitled',
             url: tab.url,
+            favIconUrl: tab.favIconUrl || '',
             muted: tab.mutedInfo?.muted || false
           });
         }
@@ -53,8 +54,10 @@ async function loadNoisyTabs() {
       let html = '';
       noisyTabsList.forEach(tab => {
         const tabTitle = tab.title.length > 30 ? tab.title.substring(0, 27) + '...' : tab.title;
+        const faviconHtml = tab.favIconUrl ? `<img class="tab-favicon" src="${tab.favIconUrl}">` : '';
         html += `
           <div class="tab-item">
+            ${faviconHtml}
             <div class="tab-title" title="${tab.title}">${tabTitle}</div>
             <div class="tab-actions">
               <button class="switch-btn" data-tab-id="${tab.id}">Switch</button>
@@ -66,6 +69,11 @@ async function loadNoisyTabs() {
         `;
       });
       content.innerHTML = html;
+
+      // Hide favicons that fail to load (inline onerror is blocked by MV3 CSP)
+      document.querySelectorAll('img.tab-favicon').forEach(img => {
+        img.addEventListener('error', () => { img.style.visibility = 'hidden'; });
+      });
 
       // Add event listeners
       document.querySelectorAll('.switch-btn').forEach(btn => {
