@@ -1,3 +1,27 @@
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (info.menuItemId === "find-noisy-tabs") {
+    scanAndShowResults();
+  } else if (info.menuItemId === "close-menu") {
+    chrome.contextMenus.removeAll(() => {
+      chrome.contextMenus.create({
+        id: "find-noisy-tabs",
+        title: "Find Noisy Tabs",
+        contexts: ["all"]
+      });
+    });
+  } else if (info.menuItemId.endsWith("-switch")) {
+    const tabId = parseInt(info.menuItemId.replace("-switch", "").replace("noisy-tab-", ""));
+    if (tabId) chrome.tabs.update(tabId, { active: true });
+  } else if (info.menuItemId.endsWith("-mute")) {
+    const tabId = parseInt(info.menuItemId.replace("-mute", "").replace("noisy-tab-", ""));
+    if (tabId) {
+      chrome.tabs.get(tabId, (t) => {
+        if (t) chrome.tabs.update(tabId, { muted: !t.mutedInfo?.muted });
+      });
+    }
+  }
+});
+
 // Background service worker for Where's the Noise extension
 // Updated to use popup instead of context menu (to avoid Chrome caching issues)
 
