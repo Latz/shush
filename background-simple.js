@@ -11,14 +11,14 @@ chrome.contextMenus.onClicked.addListener((info) => {
     });
   } else if (info.menuItemId.endsWith("-switch")) {
     const tabId = parseInt(info.menuItemId.replace("-switch", "").replace("noisy-tab-", ""), 10);
-    if (tabId) {
+    if (Number.isFinite(tabId) && tabId > 0) {
       chrome.tabs.get(tabId, (t) => {
         if (t) chrome.tabs.update(tabId, { active: true });
       });
     }
   } else if (info.menuItemId.endsWith("-mute")) {
     const tabId = parseInt(info.menuItemId.replace("-mute", "").replace("noisy-tab-", ""), 10);
-    if (tabId) {
+    if (Number.isFinite(tabId) && tabId > 0) {
       chrome.tabs.get(tabId, (t) => {
         if (t) chrome.tabs.update(tabId, { muted: !t.mutedInfo?.muted });
       });
@@ -152,19 +152,23 @@ async function scanAndShowResults() {
   }
 }
 
+// NOTE: Menu state is not persisted across service worker restarts. If the worker
+// is killed while the menu is in its expanded state (after a scan), the menu will
+// remain expanded until the user clicks "Find Noisy Tabs" again. This is an
+// unavoidable consequence of storing menu state only in Chrome's context menu registry.
 function showNoisyTabsInMenu(noisyTabsList) {
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({
       id: "find-noisy-tabs",
       title: "Find Noisy Tabs",
       contexts: ["all"]
-    });
+    }, () => { if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError); });
 
     chrome.contextMenus.create({
       id: "separator",
       type: "separator",
       contexts: ["all"]
-    });
+    }, () => { if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError); });
 
     noisyTabsList.forEach((tab) => {
       const tabTitle = tab.title.length > 30 ? tab.title.substring(0, 27) + '...' : tab.title;
@@ -174,33 +178,33 @@ function showNoisyTabsInMenu(noisyTabsList) {
         id: itemId,
         title: `${tabTitle}${tab.muted ? ' (muted)' : ''}`,
         contexts: ["all"]
-      });
+      }, () => { if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError); });
 
       chrome.contextMenus.create({
         id: `${itemId}-switch`,
         parentId: itemId,
         title: "Switch to Tab",
         contexts: ["all"]
-      });
+      }, () => { if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError); });
 
       chrome.contextMenus.create({
         id: `${itemId}-mute`,
         parentId: itemId,
         title: tab.muted ? "Unmute Tab" : "Mute Tab",
         contexts: ["all"]
-      });
+      }, () => { if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError); });
     });
 
     chrome.contextMenus.create({
       id: "separator2",
       type: "separator",
       contexts: ["all"]
-    });
+    }, () => { if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError); });
 
     chrome.contextMenus.create({
       id: "close-menu",
       title: "Close Menu",
       contexts: ["all"]
-    });
+    }, () => { if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError); });
   });
 }
