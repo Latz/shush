@@ -106,6 +106,3 @@ async function loadNoisyTabs() {
 
 // Load tabs when popup opens
 document.addEventListener('DOMContentLoaded', loadNoisyTabs);
-
-// Refresh button
-document.getElementById('refresh').addEventListener('click', loadNoisyTabs);
