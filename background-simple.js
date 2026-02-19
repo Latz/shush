@@ -107,21 +107,19 @@ function scheduleMenuUpdate() {
 async function updateMenuSilently() {
   try {
     const allTabs = await chrome.tabs.query({});
-    const currentWindow = await chrome.windows.getCurrent({ populate: true });
-    const currentActiveTab = currentWindow.tabs.find(t => t.active);
+    const [currentActiveTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
 
     const noisyTabsList = [];
 
     for (const tab of allTabs) {
       if (!tab.url || !tab.url.startsWith('http')) continue;
       if (tab.audible) {
-        const isActiveInCurrentWindow = currentActiveTab && tab.id === currentActiveTab.id;
         noisyTabsList.push({
           id: tab.id,
           title: tab.title || 'Untitled',
           url: tab.url,
           muted: tab.mutedInfo?.muted || false,
-          isCurrentTab: isActiveInCurrentWindow
+          isCurrentTab: currentActiveTab && tab.id === currentActiveTab.id
         });
       }
     }
@@ -146,22 +144,19 @@ async function updateMenuSilently() {
 async function scanAndShowResults() {
   try {
     const allTabs = await chrome.tabs.query({});
-    const currentWindow = await chrome.windows.getCurrent({ populate: true });
-    const currentActiveTab = currentWindow.tabs.find(t => t.active);
+    const [currentActiveTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
 
     const noisyTabsList = [];
-    let totalAudioTabs = 0;
 
     for (const tab of allTabs) {
       if (!tab.url || !tab.url.startsWith('http')) continue;
       if (tab.audible) {
-        const isActiveInCurrentWindow = currentActiveTab && tab.id === currentActiveTab.id;
         noisyTabsList.push({
           id: tab.id,
           title: tab.title || 'Untitled',
           url: tab.url,
           muted: tab.mutedInfo?.muted || false,
-          isCurrentTab: isActiveInCurrentWindow
+          isCurrentTab: currentActiveTab && tab.id === currentActiveTab.id
         });
       }
     }
