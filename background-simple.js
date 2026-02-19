@@ -4,9 +4,7 @@ chrome.contextMenus.onClicked.addListener((info) => {
   } else if (info.menuItemId.endsWith("-switch")) {
     const tabId = parseInt(info.menuItemId.replace("-switch", "").replace("noisy-tab-", ""), 10);
     if (Number.isFinite(tabId) && tabId > 0) {
-      chrome.tabs.get(tabId, (t) => {
-        if (t) chrome.tabs.update(tabId, { active: true });
-      });
+      chrome.tabs.update(tabId, { active: true });
     }
   } else if (info.menuItemId.endsWith("-mute")) {
     const tabId = parseInt(info.menuItemId.replace("-mute", "").replace("noisy-tab-", ""), 10);
@@ -117,7 +115,6 @@ async function updateMenuSilently() {
         noisyTabsList.push({
           id: tab.id,
           title: tab.title || 'Untitled',
-          url: tab.url,
           muted: tab.mutedInfo?.muted || false,
           isCurrentTab: currentActiveTab && tab.id === currentActiveTab.id
         });
@@ -154,7 +151,6 @@ async function scanAndShowResults() {
         noisyTabsList.push({
           id: tab.id,
           title: tab.title || 'Untitled',
-          url: tab.url,
           muted: tab.mutedInfo?.muted || false,
           isCurrentTab: currentActiveTab && tab.id === currentActiveTab.id
         });
