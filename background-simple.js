@@ -161,12 +161,21 @@ async function scanAndShowResults() {
       }
     }
 
+    const backgroundNoisyTabs = noisyTabsList.filter(t => !t.isCurrentTab);
+
     if (noisyTabsList.length === 0) {
       chrome.notifications.create({
         type: 'basic',
         iconUrl: 'icons/icon48.png',
         title: "Where's the Noise",
         message: 'No tabs are playing audio. All quiet!'
+      });
+    } else if (backgroundNoisyTabs.length === 0) {
+      chrome.notifications.create({
+        type: 'basic',
+        iconUrl: 'icons/icon48.png',
+        title: "Where's the Noise",
+        message: 'All audio is coming from the current tab.'
       });
     } else {
       await showNoisyTabsInMenu(noisyTabsList);
