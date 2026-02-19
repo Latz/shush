@@ -1,14 +1,6 @@
 chrome.contextMenus.onClicked.addListener((info) => {
   if (info.menuItemId === "find-noisy-tabs") {
     scanAndShowResults();
-  } else if (info.menuItemId === "close-menu") {
-    chrome.contextMenus.removeAll(() => {
-      chrome.contextMenus.create({
-        id: "find-noisy-tabs",
-        title: "Find Noisy Tabs",
-        contexts: ["all"]
-      });
-    });
   } else if (info.menuItemId.endsWith("-switch")) {
     const tabId = parseInt(info.menuItemId.replace("-switch", "").replace("noisy-tab-", ""), 10);
     if (Number.isFinite(tabId) && tabId > 0) {
@@ -248,18 +240,6 @@ function showNoisyTabsInMenu(noisyTabsList) {
         contexts: ["all"]
       }, () => { if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError); });
     });
-
-    chrome.contextMenus.create({
-      id: "separator2",
-      type: "separator",
-      contexts: ["all"]
-    }, () => { if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError); });
-
-    chrome.contextMenus.create({
-      id: "close-menu",
-      title: "Close Menu",
-      contexts: ["all"]
-    }, () => { if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError); });
 
       resolve();
     });
