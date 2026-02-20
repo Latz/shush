@@ -31,13 +31,13 @@ chrome.contextMenus.onClicked.addListener((info) => {
   } else if (info.menuItemId.endsWith("-mute")) {
     const tabId = parseInt(info.menuItemId.replace("-mute", "").replace("noisy-tab-", ""), 10);
     if (Number.isFinite(tabId) && tabId > 0) {
-      chrome.tabs.get(tabId, (t) => {
-        if (t) {
+      chrome.tabs.get(tabId)
+        .then(t => {
           const nowMuted = !t.mutedInfo?.muted;
-          chrome.tabs.update(tabId, { muted: nowMuted });
-          injectMediaMute(tabId, nowMuted);
-        }
-      });
+          return chrome.tabs.update(tabId, { muted: nowMuted })
+            .then(updated => injectMediaMute(tabId, updated.mutedInfo?.muted ?? nowMuted));
+        })
+        .catch(() => {}); // tab may have closed between menu click and handler
     }
   }
   // else: click on a noisy-tab-N parent label (current tab or background tab title) — no action
