@@ -59,13 +59,13 @@ button {
 .mute-btn {
   background: #f44336;
   color: white;
-  min-width: 68px;
+  min-width: 64px;
 }
 
 .unmute-btn {
   background: #2196F3;
   color: white;
-  min-width: 68px;
+  min-width: 64px;
 }
 
 .no-tabs {
