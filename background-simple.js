@@ -15,7 +15,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 function injectMediaMute(tabId, muted) {
   chrome.scripting.executeScript({
     target: { tabId, allFrames: true },
-    func: (m) => { document.querySelectorAll('audio, video').forEach(el => { el.muted = m; }); },
+    func: (m) => {
+      document.querySelectorAll('audio, video').forEach(el => {
+        el.muted = m;
+        // Some players pause in response to el.muted=true; resume them on unmute
+        if (!m && el.paused && !el.ended) el.play().catch(() => {});
+      });
+    },
     args: [muted]
   }).catch(() => {}); // silently ignore restricted pages (chrome://, PDFs, etc.)
 }
