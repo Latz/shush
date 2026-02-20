@@ -8,8 +8,10 @@
     "notifications",
     "activeTab",
     "windows",
-    "contextMenus"
+    "contextMenus",
+    "scripting"
   ],
+  "host_permissions": ["<all_urls>"],
   "action": {
     "default_title": "Where's the Noise",
     "default_popup": "popup.html"
