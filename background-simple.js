@@ -82,7 +82,7 @@ try {
 
 // Listen for tab activation to update badge and menu
 chrome.tabs.onActivated.addListener(() => {
-  updateAll();
+  scheduleUpdate();
 });
 
 // Single debounced update replacing scheduleBadgeUpdate + scheduleMenuUpdate
