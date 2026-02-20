@@ -65,6 +65,8 @@ Any tab where audio is actually coming out — YouTube playing, Spotify running,
 | `windows` | Find the focused window |
 | `contextMenus` | Build the right-click menu |
 | `notifications` | Show a notification when "Find Noisy Tabs" finds nothing |
+| `scripting` | Inject a script into noisy tabs to mute `<audio>` and `<video>` elements directly — needed for browsers (e.g. Vivaldi) where the standard tab mute API does not silence audio playback |
+| `<all_urls>` (host permission) | Required by the `scripting` API to inject into tabs regardless of which site they're on — the injected script only sets `.muted` on media elements and reads nothing |
 
 ---
 
