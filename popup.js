@@ -7,10 +7,10 @@ async function loadNoisyTabs() {
   try {
     const [allTabs, currentWindow] = await Promise.all([
       chrome.tabs.query({}),
-      chrome.windows.getCurrent({ populate: true })
+      chrome.windows.getCurrent()
     ]);
-    // Get the current window's active tab
-    const currentActiveTab = currentWindow.tabs.find(t => t.active);
+    // Get the current window's active tab from the already-fetched allTabs
+    const currentActiveTab = allTabs.find(t => t.active && t.windowId === currentWindow.id);
 
     // Check each tab for audio
     const noisyTabsList = [];
