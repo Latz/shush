@@ -68,10 +68,17 @@ chrome.tabs.onRemoved.addListener(() => {
   scheduleUpdate();
 });
 
-// Listen for tab updates to track audio state — browser filters before invoking JS
-chrome.tabs.onUpdated.addListener(() => {
-  scheduleUpdate();
-}, { properties: ['audible'] });
+// Listen for tab updates to track audio state
+// Use declarative event filter where supported; fall back to JS-side check (e.g. Vivaldi)
+try {
+  chrome.tabs.onUpdated.addListener(() => {
+    scheduleUpdate();
+  }, { properties: ['audible'] });
+} catch (e) {
+  chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+    if (changeInfo.audible !== undefined) scheduleUpdate();
+  });
+}
 
 // Listen for tab activation to update badge and menu
 chrome.tabs.onActivated.addListener(() => {
