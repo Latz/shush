@@ -90,8 +90,10 @@ function scheduleUpdate() {
 // Fetch tabs data once and update both badge and menu in a single pass
 async function updateAll() {
   try {
-    const allTabs = await chrome.tabs.query({});
-    const [currentActiveTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    const [allTabs, [currentActiveTab]] = await Promise.all([
+      chrome.tabs.query({}),
+      chrome.tabs.query({ active: true, lastFocusedWindow: true })
+    ]);
 
     // Update badge
     const audioCount = allTabs.filter(t => t.audible).length;
@@ -139,8 +141,10 @@ function buildNoisyTabsList(allTabs, currentActiveTab) {
 
 async function scanAndShowResults() {
   try {
-    const allTabs = await chrome.tabs.query({});
-    const [currentActiveTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    const [allTabs, [currentActiveTab]] = await Promise.all([
+      chrome.tabs.query({}),
+      chrome.tabs.query({ active: true, lastFocusedWindow: true })
+    ]);
     const noisyTabsList = buildNoisyTabsList(allTabs, currentActiveTab);
     const backgroundNoisyTabs = noisyTabsList.filter(t => !t.isCurrentTab);
 
