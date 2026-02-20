@@ -80,3 +80,6 @@ Chrome's `audible` flag only fires when audio is actually outputting sound. If t
 
 **😴 The extension stopped responding**
 Chrome occasionally suspends the background service worker. Reloading the extension at `chrome://extensions/` brings it back.
+
+**🔇 Mute doesn't silence everything on a tab**
+The mute function silences standard `<audio>` and `<video>` elements. Audio generated via the Web Audio API (used by some games, music tools, and interactive visualizers) is not affected — there is no browser API that lets extensions reach those audio sources after a page has loaded.
