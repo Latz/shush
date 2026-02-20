@@ -5,14 +5,12 @@ async function loadNoisyTabs() {
   content.innerHTML = '<div class="no-tabs">Scanning for noisy tabs...</div>';
 
   try {
-    // Get all tabs from all windows
-    const allTabs = await chrome.tabs.query({});
-    console.log('Found', allTabs.length, 'tabs');
-
-    // Get the current window and its active tab
-    const currentWindow = await chrome.windows.getCurrent({ populate: true });
+    const [allTabs, currentWindow] = await Promise.all([
+      chrome.tabs.query({}),
+      chrome.windows.getCurrent({ populate: true })
+    ]);
+    // Get the current window's active tab
     const currentActiveTab = currentWindow.tabs.find(t => t.active);
-    console.log('Current active tab:', currentActiveTab?.title);
 
     // Check each tab for audio
     const noisyTabsList = [];
@@ -22,9 +20,7 @@ async function loadNoisyTabs() {
       // Skip tabs without URLs (like chrome:// pages)
       if (!tab.url || !tab.url.startsWith('http')) continue;
 
-      // Check if tab is audible
       const isAudible = tab.audible;
-      // Only consider a tab "not noisy" if it's the active tab in the CURRENT window
       const isActiveInCurrentWindow = currentActiveTab && tab.id === currentActiveTab.id;
 
       if (isAudible) {
@@ -40,9 +36,6 @@ async function loadNoisyTabs() {
         }
       }
     }
-
-    console.log('Total audio tabs:', totalAudioTabs);
-    console.log('Noisy tabs (not active):', noisyTabsList.length);
 
     // Handle different scenarios
     if (totalAudioTabs === 0) {
@@ -90,10 +83,16 @@ async function loadNoisyTabs() {
         muteBtn.textContent = tab.muted ? 'Unmute' : 'Mute';
         muteBtn.addEventListener('click', async () => {
           const nowMuted = !tab.muted;
-          await chrome.tabs.update(tab.id, { muted: nowMuted });
-          tab.muted = nowMuted;
-          muteBtn.textContent = nowMuted ? 'Unmute' : 'Mute';
-          muteBtn.className = nowMuted ? 'unmute-btn' : 'mute-btn';
+          try {
+            // Delegate mute to background service worker to avoid popup-context revert
+            const response = await chrome.runtime.sendMessage({ action: 'muteTab', tabId: tab.id, muted: nowMuted });
+            const actuallyMuted = response?.muted ?? nowMuted;
+            tab.muted = actuallyMuted;
+            muteBtn.textContent = actuallyMuted ? 'Unmute' : 'Mute';
+            muteBtn.className = actuallyMuted ? 'unmute-btn' : 'mute-btn';
+          } catch (err) {
+            console.error('Mute failed:', err);
+          }
         });
         actions.appendChild(muteBtn);
 
