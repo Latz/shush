@@ -46,7 +46,6 @@ chrome.contextMenus.onClicked.addListener((info) => {
 // Background service worker for Where's the Noise extension
 // Handles badge tracking and context menu interactions
 
-// Update badge on install and startup
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
     id: "find-noisy-tabs",
@@ -57,75 +56,72 @@ chrome.runtime.onInstalled.addListener(() => {
       console.error('Error creating context menu:', chrome.runtime.lastError);
     }
   });
-  updateBadge();
-  updateMenuSilently();
+  updateAll();
 });
 
 chrome.runtime.onStartup.addListener(() => {
-  updateBadge();
-  updateMenuSilently();
+  updateAll();
 });
 
-// Listen for tab close to update badge
+// Listen for tab close to update badge and menu
 chrome.tabs.onRemoved.addListener(() => {
-  scheduleBadgeUpdate();
-  scheduleMenuUpdate();
+  scheduleUpdate();
 });
 
 // Listen for tab updates to track audio state
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.audible !== undefined) {
-    scheduleBadgeUpdate();
-    scheduleMenuUpdate();
+    scheduleUpdate();
   }
 });
 
-// Listen for tab activation to update badge
+// Listen for tab activation to update badge and menu
 chrome.tabs.onActivated.addListener(() => {
-  updateBadge();
-  scheduleMenuUpdate();
+  updateAll();
 });
 
-// Update the browser action badge with audio count
-function updateBadge() {
-  // Get all tabs to count audio tabs (using all windows for proper badge count)
-  chrome.tabs.query({}, (tabs) => {
-    const audioTabs = tabs.filter(t => t.audible).length;
+// Single debounced update replacing scheduleBadgeUpdate + scheduleMenuUpdate
+let updateTimeout;
+function scheduleUpdate() {
+  clearTimeout(updateTimeout);
+  updateTimeout = setTimeout(() => updateAll(), 500);
+}
 
-    if (audioTabs > 0) {
-      // Show count if there are audio tabs
-      const count = audioTabs.toString();
-      chrome.action.setBadgeText({ text: count });
-      chrome.action.setBadgeBackgroundColor({
-        color: '#000000'
-      });
+// Fetch tabs data once and update both badge and menu in a single pass
+async function updateAll() {
+  try {
+    const allTabs = await chrome.tabs.query({});
+    const [currentActiveTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+
+    // Update badge
+    const audioCount = allTabs.filter(t => t.audible).length;
+    if (audioCount > 0) {
+      chrome.action.setBadgeText({ text: audioCount.toString() });
+      chrome.action.setBadgeBackgroundColor({ color: '#000000' });
     } else {
-      // Clear badge if no audio
       chrome.action.setBadgeText({ text: '' });
     }
-  });
+
+    // Update menu
+    const noisyTabsList = buildNoisyTabsList(allTabs, currentActiveTab);
+    if (noisyTabsList.length === 0) {
+      chrome.contextMenus.removeAll(() => {
+        chrome.contextMenus.create({
+          id: "find-noisy-tabs",
+          title: "Find Noisy Tabs",
+          contexts: ["all"]
+        }, () => { if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError); });
+      });
+    } else {
+      await showNoisyTabsInMenu(noisyTabsList);
+    }
+  } catch (error) {
+    console.error('Update error:', error);
+  }
 }
 
-// Throttled badge update to prevent performance issues
-let badgeUpdateTimeout;
-function scheduleBadgeUpdate() {
-  clearTimeout(badgeUpdateTimeout);
-  badgeUpdateTimeout = setTimeout(() => {
-    updateBadge();
-  }, 500);
-}
-
-let menuUpdateTimeout;
-function scheduleMenuUpdate() {
-  clearTimeout(menuUpdateTimeout);
-  menuUpdateTimeout = setTimeout(() => {
-    updateMenuSilently();
-  }, 500);
-}
-
-async function buildNoisyTabsList() {
-  const allTabs = await chrome.tabs.query({});
-  const [currentActiveTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+// Pure function — builds noisy tabs list from pre-fetched data
+function buildNoisyTabsList(allTabs, currentActiveTab) {
   const noisyTabsList = [];
   for (const tab of allTabs) {
     if (!tab.url || !tab.url.startsWith('http')) continue;
@@ -141,30 +137,11 @@ async function buildNoisyTabsList() {
   return noisyTabsList;
 }
 
-async function updateMenuSilently() {
-  try {
-    const noisyTabsList = await buildNoisyTabsList();
-
-    if (noisyTabsList.length === 0) {
-      // Reset to initial state — just the root item
-      chrome.contextMenus.removeAll(() => {
-        chrome.contextMenus.create({
-          id: "find-noisy-tabs",
-          title: "Find Noisy Tabs",
-          contexts: ["all"]
-        }, () => { if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError); });
-      });
-    } else {
-      await showNoisyTabsInMenu(noisyTabsList);
-    }
-  } catch (error) {
-    console.error('Menu update error:', error);
-  }
-}
-
 async function scanAndShowResults() {
   try {
-    const noisyTabsList = await buildNoisyTabsList();
+    const allTabs = await chrome.tabs.query({});
+    const [currentActiveTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    const noisyTabsList = buildNoisyTabsList(allTabs, currentActiveTab);
     const backgroundNoisyTabs = noisyTabsList.filter(t => !t.isCurrentTab);
 
     if (noisyTabsList.length === 0) {
