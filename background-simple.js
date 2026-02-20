@@ -1,3 +1,25 @@
+// Handle mute requests from popup (avoids popup-context revert behaviour)
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message.action === 'muteTab') {
+    chrome.tabs.update(message.tabId, { muted: message.muted })
+      .then(tab => {
+        const actualMuted = tab.mutedInfo?.muted ?? message.muted;
+        injectMediaMute(message.tabId, actualMuted);
+        sendResponse({ muted: actualMuted });
+      })
+      .catch(() => sendResponse({ muted: message.muted }));
+    return true; // keep channel open for async response
+  }
+});
+
+function injectMediaMute(tabId, muted) {
+  chrome.scripting.executeScript({
+    target: { tabId, allFrames: true },
+    func: (m) => { document.querySelectorAll('audio, video').forEach(el => { el.muted = m; }); },
+    args: [muted]
+  }).catch(() => {}); // silently ignore restricted pages (chrome://, PDFs, etc.)
+}
+
 chrome.contextMenus.onClicked.addListener((info) => {
   if (info.menuItemId === "find-noisy-tabs") {
     scanAndShowResults();
@@ -10,7 +32,11 @@ chrome.contextMenus.onClicked.addListener((info) => {
     const tabId = parseInt(info.menuItemId.replace("-mute", "").replace("noisy-tab-", ""), 10);
     if (Number.isFinite(tabId) && tabId > 0) {
       chrome.tabs.get(tabId, (t) => {
-        if (t) chrome.tabs.update(tabId, { muted: !t.mutedInfo?.muted });
+        if (t) {
+          const nowMuted = !t.mutedInfo?.muted;
+          chrome.tabs.update(tabId, { muted: nowMuted });
+          injectMediaMute(tabId, nowMuted);
+        }
       });
     }
   }
