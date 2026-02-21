@@ -1,18 +1,42 @@
+/* ── Color tokens ── */
+:root {
+  --bg: #ffffff;
+  --text: #000000;
+  --heading: #333333;
+  --card-bg: #f5f5f5;
+  --card-hover: #e0e0e0;
+  --muted-text: #666666;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #202124;
+    --text: #e8eaed;
+    --heading: #e8eaed;
+    --card-bg: #303134;
+    --card-hover: #3c3f41;
+    --muted-text: #9aa0a6;
+  }
+}
+
+/* ── Layout ── */
 body {
   width: 300px;
   padding: 10px;
   font-family: Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
 }
 
 h3 {
   margin: 0 0 10px 0;
-  color: #333;
+  color: var(--heading);
 }
 
 .tab-item {
   padding: 8px;
   margin: 5px 0;
-  background: #f5f5f5;
+  background: var(--card-bg);
   border-radius: 4px;
   cursor: pointer;
   display: flex;
@@ -21,7 +45,7 @@ h3 {
 }
 
 .tab-item:hover {
-  background: #e0e0e0;
+  background: var(--card-hover);
 }
 
 .tab-favicon {
@@ -70,6 +94,6 @@ button {
 
 .no-tabs {
   text-align: center;
-  color: #666;
+  color: var(--muted-text);
   padding: 20px;
 }
