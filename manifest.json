@@ -16,8 +16,7 @@
     "default_title": "Shush!",
     "default_popup": "popup.html"
   },
-  "options_page": "options.html",
-  "icons": {
+"icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
