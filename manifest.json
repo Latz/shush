@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Shush",
   "version": "1.0.0",
-  "description": "Detect tabs that are playing sound in the background - find noisy tabs that are not currently active",
+  "description": "Find and silence tabs making noise in the background.",
   "permissions": [
     "tabs",
     "notifications",
