@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Where's the Noise",
+  "name": "Shush",
   "version": "1.0.0",
   "description": "Detect tabs that are playing sound in the background - find noisy tabs that are not currently active",
   "permissions": [
@@ -13,7 +13,7 @@
   ],
   "host_permissions": ["<all_urls>"],
   "action": {
-    "default_title": "Where's the Noise",
+    "default_title": "Shush",
     "default_popup": "popup.html"
   },
   "options_page": "options.html",
