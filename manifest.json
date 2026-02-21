@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Shush",
+  "name": "Shush!",
   "version": "1.0.0",
   "description": "Find and silence tabs making noise in the background.",
   "permissions": [
@@ -13,7 +13,7 @@
   ],
   "host_permissions": ["<all_urls>"],
   "action": {
-    "default_title": "Shush",
+    "default_title": "Shush!",
     "default_popup": "popup.html"
   },
   "options_page": "options.html",

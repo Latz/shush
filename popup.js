@@ -1,4 +1,4 @@
-// Popup script for Shush extension
+// Popup script for Shush! extension
 
 async function loadNoisyTabs() {
   const content = document.getElementById('content');

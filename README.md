@@ -1,4 +1,4 @@
-# 🤫 Shush
+# 🤫 Shush!
 
 You know that moment when music is playing somewhere and you have no idea which of your 30 tabs is responsible? That's what this extension is for.
 

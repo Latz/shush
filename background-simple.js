@@ -163,14 +163,14 @@ async function scanAndShowResults() {
       chrome.notifications.create({
         type: 'basic',
         iconUrl: 'icons/icon48.png',
-        title: "Shush",
+        title: "Shush!",
         message: 'No tabs are playing audio. All quiet!'
       });
     } else if (backgroundNoisyTabs.length === 0) {
       chrome.notifications.create({
         type: 'basic',
         iconUrl: 'icons/icon48.png',
-        title: "Shush",
+        title: "Shush!",
         message: 'All audio is coming from the current tab.'
       });
     } else {
