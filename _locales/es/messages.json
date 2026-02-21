@@ -1,0 +1,16 @@
+{
+  "extDescription": { "message": "Encuentra y silencia las pestañas que hacen ruido en segundo plano." },
+  "popupScanning":  { "message": "Buscando pestañas ruidosas..." },
+  "noAudio":        { "message": "Ninguna pestaña está reproduciendo audio. ¡Todo en silencio!" },
+  "audioCurrentTab":{ "message": "Todo el audio proviene de la pestaña actual." },
+  "btnSwitch":      { "message": "Cambiar" },
+  "untitled":       { "message": "Sin título" },
+  "errorLoadTabs":  { "message": "Error al cargar las pestañas. Por favor, inténtalo de nuevo." },
+  "menuFindNoisyTabs": { "message": "Buscar pestañas ruidosas" },
+  "menuCurrentTab": { "message": "(pestaña actual)" },
+  "menuMuted":      { "message": "(silenciado)" },
+  "menuSwitchToTab":{ "message": "Ir a la pestaña" },
+  "menuMuteTab":    { "message": "Silenciar pestaña" },
+  "menuUnmuteTab":  { "message": "Activar sonido" },
+  "errorScanTabs":  { "message": "Error al analizar las pestañas. Por favor, inténtalo de nuevo." }
+}

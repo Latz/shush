@@ -1,0 +1,16 @@
+{
+  "extDescription": { "message": "查找并静音在后台播放声音的标签页。" },
+  "popupScanning":  { "message": "正在扫描嘈杂的标签页..." },
+  "noAudio":        { "message": "没有标签页正在播放音频。一切安静！" },
+  "audioCurrentTab":{ "message": "所有音频均来自当前标签页。" },
+  "btnSwitch":      { "message": "切换" },
+  "untitled":       { "message": "无标题" },
+  "errorLoadTabs":  { "message": "加载标签页时出错，请重试。" },
+  "menuFindNoisyTabs": { "message": "查找嘈杂的标签页" },
+  "menuCurrentTab": { "message": "（当前标签页）" },
+  "menuMuted":      { "message": "（已静音）" },
+  "menuSwitchToTab":{ "message": "切换到标签页" },
+  "menuMuteTab":    { "message": "静音标签页" },
+  "menuUnmuteTab":  { "message": "取消静音" },
+  "errorScanTabs":  { "message": "扫描标签页时出错，请重试。" }
+}

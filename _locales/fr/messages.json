@@ -1,0 +1,16 @@
+{
+  "extDescription": { "message": "Trouvez et réduisez au silence les onglets bruyants en arrière-plan." },
+  "popupScanning":  { "message": "Recherche des onglets bruyants..." },
+  "noAudio":        { "message": "Aucun onglet ne diffuse de l'audio. Tout est calme !" },
+  "audioCurrentTab":{ "message": "Tout l'audio provient de l'onglet actuel." },
+  "btnSwitch":      { "message": "Basculer" },
+  "untitled":       { "message": "Sans titre" },
+  "errorLoadTabs":  { "message": "Erreur lors du chargement des onglets. Veuillez réessayer." },
+  "menuFindNoisyTabs": { "message": "Trouver les onglets bruyants" },
+  "menuCurrentTab": { "message": "(onglet actuel)" },
+  "menuMuted":      { "message": "(muet)" },
+  "menuSwitchToTab":{ "message": "Aller à l'onglet" },
+  "menuMuteTab":    { "message": "Couper le son" },
+  "menuUnmuteTab":  { "message": "Rétablir le son" },
+  "errorScanTabs":  { "message": "Erreur lors de l'analyse des onglets. Veuillez réessayer." }
+}

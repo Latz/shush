@@ -1,0 +1,16 @@
+{
+  "extDescription": { "message": "バックグラウンドで音を出しているタブを見つけて消音します。" },
+  "popupScanning":  { "message": "音のあるタブを検索中..." },
+  "noAudio":        { "message": "音を再生しているタブはありません。静かです！" },
+  "audioCurrentTab":{ "message": "すべての音は現在のタブから出ています。" },
+  "btnSwitch":      { "message": "切り替え" },
+  "untitled":       { "message": "タイトルなし" },
+  "errorLoadTabs":  { "message": "タブの読み込みエラー。もう一度お試しください。" },
+  "menuFindNoisyTabs": { "message": "音のあるタブを探す" },
+  "menuCurrentTab": { "message": "（現在のタブ）" },
+  "menuMuted":      { "message": "（ミュート中）" },
+  "menuSwitchToTab":{ "message": "タブに切り替え" },
+  "menuMuteTab":    { "message": "タブをミュート" },
+  "menuUnmuteTab":  { "message": "ミュートを解除" },
+  "errorScanTabs":  { "message": "タブのスキャンエラー。もう一度お試しください。" }
+}

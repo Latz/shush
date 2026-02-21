@@ -1,0 +1,16 @@
+{
+  "extDescription": { "message": "Find and silence tabs making noise in the background." },
+  "popupScanning":  { "message": "Scanning for noisy tabs..." },
+  "noAudio":        { "message": "No tabs are playing audio. All quiet!" },
+  "audioCurrentTab":{ "message": "All audio is coming from the current tab." },
+  "btnSwitch":      { "message": "Switch" },
+  "untitled":       { "message": "Untitled" },
+  "errorLoadTabs":  { "message": "Error loading tabs. Please try again." },
+  "menuFindNoisyTabs": { "message": "Find Noisy Tabs" },
+  "menuCurrentTab": { "message": "(current tab)" },
+  "menuMuted":      { "message": "(muted)" },
+  "menuSwitchToTab":{ "message": "Switch to Tab" },
+  "menuMuteTab":    { "message": "Mute Tab" },
+  "menuUnmuteTab":  { "message": "Unmute Tab" },
+  "errorScanTabs":  { "message": "Error scanning tabs. Please try again." }
+}

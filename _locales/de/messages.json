@@ -1,0 +1,16 @@
+{
+  "extDescription": { "message": "Finde und stumm schalte Tabs, die im Hintergrund Geräusche machen." },
+  "popupScanning":  { "message": "Suche nach lauten Tabs..." },
+  "noAudio":        { "message": "Keine Tabs spielen Audio ab. Alles ruhig!" },
+  "audioCurrentTab":{ "message": "Das gesamte Audio kommt vom aktuellen Tab." },
+  "btnSwitch":      { "message": "Wechseln" },
+  "untitled":       { "message": "Ohne Titel" },
+  "errorLoadTabs":  { "message": "Fehler beim Laden der Tabs. Bitte erneut versuchen." },
+  "menuFindNoisyTabs": { "message": "Laute Tabs finden" },
+  "menuCurrentTab": { "message": "(aktueller Tab)" },
+  "menuMuted":      { "message": "(stummgeschaltet)" },
+  "menuSwitchToTab":{ "message": "Zum Tab wechseln" },
+  "menuMuteTab":    { "message": "Tab stumm schalten" },
+  "menuUnmuteTab":  { "message": "Tab-Ton einschalten" },
+  "errorScanTabs":  { "message": "Fehler beim Scannen der Tabs. Bitte erneut versuchen." }
+}
