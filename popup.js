@@ -80,7 +80,7 @@ async function loadNoisyTabs() {
 
         const muteBtn = document.createElement('button');
         muteBtn.className = tab.muted ? 'unmute-btn' : 'mute-btn';
-        muteBtn.textContent = tab.muted ? 'Unmute' : 'Mute';
+        muteBtn.textContent = tab.muted ? 'Unshush!' : 'Shush!';
         muteBtn.addEventListener('click', async () => {
           const nowMuted = !tab.muted;
           try {
@@ -88,7 +88,7 @@ async function loadNoisyTabs() {
             const response = await chrome.runtime.sendMessage({ action: 'muteTab', tabId: tab.id, muted: nowMuted });
             const actuallyMuted = response?.muted ?? nowMuted;
             tab.muted = actuallyMuted;
-            muteBtn.textContent = actuallyMuted ? 'Unmute' : 'Mute';
+            muteBtn.textContent = actuallyMuted ? 'Unshush!' : 'Shush!';
             muteBtn.className = actuallyMuted ? 'unmute-btn' : 'mute-btn';
           } catch (err) {
             console.error('Mute failed:', err);
