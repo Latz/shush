@@ -2,7 +2,8 @@
   "manifest_version": 3,
   "name": "Shush!",
   "version": "1.0.0",
-  "description": "Find and silence tabs making noise in the background.",
+  "description": "__MSG_extDescription__",
+  "default_locale": "en",
   "permissions": [
     "tabs",
     "notifications",
@@ -16,7 +17,7 @@
     "default_title": "Shush!",
     "default_popup": "popup.html"
   },
-"icons": {
+  "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
