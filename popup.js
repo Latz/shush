@@ -2,7 +2,7 @@
 
 async function loadNoisyTabs() {
   const content = document.getElementById('content');
-  content.innerHTML = '<div class="no-tabs">Scanning for noisy tabs...</div>';
+  content.innerHTML = `<div class="no-tabs">${chrome.i18n.getMessage('popupScanning')}</div>`;
 
   try {
     const [allTabs, currentWindow] = await Promise.all([
@@ -28,7 +28,7 @@ async function loadNoisyTabs() {
         if (!isActiveInCurrentWindow) {
           noisyTabsList.push({
             id: tab.id,
-            title: tab.title || 'Untitled',
+            title: tab.title || chrome.i18n.getMessage('untitled'),
             url: tab.url,
             favIconUrl: tab.favIconUrl || '',
             muted: tab.mutedInfo?.muted || false
@@ -39,9 +39,9 @@ async function loadNoisyTabs() {
 
     // Handle different scenarios
     if (totalAudioTabs === 0) {
-      content.innerHTML = '<div class="no-tabs">No tabs are playing audio. All quiet!</div>';
+      content.innerHTML = `<div class="no-tabs">${chrome.i18n.getMessage('noAudio')}</div>`;
     } else if (noisyTabsList.length === 0) {
-      content.innerHTML = '<div class="no-tabs">All audio is coming from the current tab.</div>';
+      content.innerHTML = `<div class="no-tabs">${chrome.i18n.getMessage('audioCurrentTab')}</div>`;
     } else {
       // Show noisy tabs
       content.innerHTML = '';
@@ -71,7 +71,7 @@ async function loadNoisyTabs() {
 
         const switchBtn = document.createElement('button');
         switchBtn.className = 'switch-btn';
-        switchBtn.textContent = 'Switch';
+        switchBtn.textContent = chrome.i18n.getMessage('btnSwitch');
         switchBtn.addEventListener('click', () => {
           chrome.tabs.update(tab.id, { active: true });
           window.close();
@@ -102,7 +102,7 @@ async function loadNoisyTabs() {
     }
   } catch (error) {
     console.error('Error loading noisy tabs:', error);
-    content.innerHTML = '<div class="no-tabs">Error loading tabs. Please try again.</div>';
+    content.innerHTML = `<div class="no-tabs">${chrome.i18n.getMessage('errorLoadTabs')}</div>`;
   }
 }
 
