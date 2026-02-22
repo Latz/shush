@@ -49,13 +49,13 @@ chrome.contextMenus.onClicked.addListener((info) => {
   // else: click on a noisy-tab-N parent label (current tab or background tab title) — no action
 });
 
-// Background service worker for Where's the Noise extension
+// Background service worker for Shush! extension
 // Handles badge tracking and context menu interactions
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
     id: "find-noisy-tabs",
-    title: "Find Noisy Tabs",
+    title: chrome.i18n.getMessage('menuFindNoisyTabs'),
     contexts: ["all"]
   }, () => {
     if (chrome.runtime.lastError) {
@@ -121,7 +121,7 @@ async function updateAll() {
       chrome.contextMenus.removeAll(() => {
         chrome.contextMenus.create({
           id: "find-noisy-tabs",
-          title: "Find Noisy Tabs",
+          title: chrome.i18n.getMessage('menuFindNoisyTabs'),
           contexts: ["all"]
         }, () => { if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError); });
       });
@@ -141,7 +141,7 @@ function buildNoisyTabsList(allTabs, currentActiveTab) {
     if (tab.audible) {
       noisyTabsList.push({
         id: tab.id,
-        title: tab.title || 'Untitled',
+        title: tab.title || chrome.i18n.getMessage('untitled'),
         muted: tab.mutedInfo?.muted || false,
         isCurrentTab: currentActiveTab && tab.id === currentActiveTab.id
       });
@@ -164,14 +164,14 @@ async function scanAndShowResults() {
         type: 'basic',
         iconUrl: 'icons/icon48.png',
         title: "Shush!",
-        message: 'No tabs are playing audio. All quiet!'
+        message: chrome.i18n.getMessage('noAudio')
       });
     } else if (backgroundNoisyTabs.length === 0) {
       chrome.notifications.create({
         type: 'basic',
         iconUrl: 'icons/icon48.png',
         title: "Shush!",
-        message: 'All audio is coming from the current tab.'
+        message: chrome.i18n.getMessage('audioCurrentTab')
       });
     } else {
       await showNoisyTabsInMenu(noisyTabsList);
@@ -181,8 +181,8 @@ async function scanAndShowResults() {
     chrome.notifications.create({
       type: 'basic',
       iconUrl: 'icons/icon48.png',
-      title: "Where's the Noise",
-      message: 'Error scanning tabs. Please try again.'
+      title: "Shush!",
+      message: chrome.i18n.getMessage('errorScanTabs')
     });
   }
 }
@@ -196,7 +196,7 @@ function showNoisyTabsInMenu(noisyTabsList) {
     chrome.contextMenus.removeAll(() => {
       chrome.contextMenus.create({
         id: "find-noisy-tabs",
-        title: "Find Noisy Tabs",
+        title: chrome.i18n.getMessage('menuFindNoisyTabs'),
         contexts: ["all"]
       }, () => { if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError); });
 
@@ -210,10 +210,12 @@ function showNoisyTabsInMenu(noisyTabsList) {
         const cleanTitle = tab.title.replace(/^\(\d+\)\s*/, '');
         const tabTitle = cleanTitle.length > 30 ? cleanTitle.substring(0, 27) + '...' : cleanTitle;
         const itemId = `noisy-tab-${tab.id}`;
+        const currentLabel = tab.isCurrentTab ? ` ${chrome.i18n.getMessage('menuCurrentTab')}` : '';
+        const mutedLabel = tab.muted ? ` ${chrome.i18n.getMessage('menuMuted')}` : '';
 
         chrome.contextMenus.create({
           id: itemId,
-          title: `${tabTitle}${tab.isCurrentTab ? ' (current tab)' : ''}${tab.muted ? ' (muted)' : ''}`,
+          title: `${tabTitle}${currentLabel}${mutedLabel}`,
           contexts: ["all"]
         }, () => { if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError); });
 
@@ -221,14 +223,14 @@ function showNoisyTabsInMenu(noisyTabsList) {
           chrome.contextMenus.create({
             id: `${itemId}-switch`,
             parentId: itemId,
-            title: "Switch to Tab",
+            title: chrome.i18n.getMessage('menuSwitchToTab'),
             contexts: ["all"]
           }, () => { if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError); });
 
           chrome.contextMenus.create({
             id: `${itemId}-mute`,
             parentId: itemId,
-            title: tab.muted ? "Unmute Tab" : "Mute Tab",
+            title: tab.muted ? chrome.i18n.getMessage('menuUnmuteTab') : chrome.i18n.getMessage('menuMuteTab'),
             contexts: ["all"]
           }, () => { if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError); });
         }
