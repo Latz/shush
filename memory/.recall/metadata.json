@@ -1,4 +1,20 @@
 {
+  "tr9f4a2c7e1b": {
+    "created_at": "2026-02-22T00:00:00Z",
+    "last_reviewed_at": "2026-02-22T00:00:00Z",
+    "pinned": false,
+    "snoozed_until": null,
+    "status": "active",
+    "tier": "register"
+  },
+  "trb3e7d9f205": {
+    "created_at": "2026-02-22T00:00:00Z",
+    "last_reviewed_at": "2026-02-22T00:00:00Z",
+    "pinned": false,
+    "snoozed_until": null,
+    "status": "active",
+    "tier": "working"
+  },
   "tr04629c097c": {
     "created_at": "2026-02-19T00:00:00Z",
     "last_reviewed_at": "2026-02-21T00:00:00Z",

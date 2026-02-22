@@ -42,3 +42,17 @@ Pure CSS approach is zero-maintenance, automatic, and requires no runtime logic.
 
 ### Rationale
 Generic "Mute"/"Unmute" labels were replaced with branded terms that reinforce the extension's identity and tone.
+
+## i18n uses Chrome native _locales + chrome.i18n — 2026-02-22
+
+- **claim**: i18n is implemented via Chrome's native `_locales/{locale}/messages.json` + `chrome.i18n.getMessage('key')` in JS + `__MSG_key__` in manifest. 6 locales: en, de, fr, es, ja, zh_CN. Branded strings ("Shush!", "Unshush!") are hardcoded English across all locales. ^tr9f4a2c7e1b
+- **confidence**: high
+- **evidence**: 6 locale files committed at `4c8593d`; manifest updated with `default_locale` and `__MSG_extDescription__`; 14 string keys
+- **last_verified**: 2026-02-22
+
+### Rationale
+Chrome's native i18n API is the only sensible approach for MV3 extensions — no extra libraries, works in manifest/JS/HTML, automatic locale resolution. Branded strings kept English to preserve identity across all markets.
+
+### Alternatives considered
+- Custom i18n system — rejected (reinventing the wheel)
+- English-only with deferred i18n — rejected (harder to retrofit later)
