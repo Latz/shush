@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shush! — Privacy Policy</title>
+  <style>
+    body {
+      max-width: 680px;
+      margin: 60px auto;
+      padding: 0 24px;
+      font-family: Georgia, serif;
+      font-size: 17px;
+      line-height: 1.7;
+      color: #222;
+    }
+    h1 { font-size: 1.8em; margin-bottom: 0.2em; }
+    h2 { font-size: 1.1em; margin-top: 2em; }
+    .meta { color: #666; font-size: 0.9em; margin-bottom: 2.5em; }
+    ul { padding-left: 1.4em; }
+    li { margin-bottom: 0.4em; }
+  </style>
+</head>
+<body>
+
+  <h1>🤫 Shush! — Privacy Policy</h1>
+  <p class="meta">Last updated: March 2026</p>
+
+  <p>
+    Shush! is a Chrome extension that helps you find and mute noisy browser tabs.
+    This policy explains what data the extension accesses and what happens to it.
+  </p>
+
+  <h2>Data collected</h2>
+  <p>
+    <strong>None.</strong> Shush! does not collect, store, transmit, or share any
+    personal data or usage information. No analytics, no crash reports, no telemetry
+    of any kind.
+  </p>
+
+  <h2>What the extension reads locally</h2>
+  <p>
+    To do its job, the extension reads the following information from your browser.
+    This information never leaves your device:
+  </p>
+  <ul>
+    <li>Tab titles and URLs — to display tab names in the popup and context menu</li>
+    <li>Tab audio state — to detect which tabs are playing sound</li>
+    <li>Tab mute state — to show correct Shush / Unshush button labels</li>
+  </ul>
+
+  <h2>Script injection (<code>&lt;all_urls&gt;</code> permission)</h2>
+  <p>
+    When you mute a tab, the extension injects a small script into that tab to silence
+    <code>&lt;audio&gt;</code> and <code>&lt;video&gt;</code> elements directly. This is
+    necessary because Chrome's built-in mute API does not reliably silence audio in all
+    Chromium-based browsers.
+  </p>
+  <p>
+    The injected script sets <code>.muted = true</code> on media elements and nothing
+    else. It reads no page content, accesses no user data, and sends nothing anywhere.
+    Injection happens only when you explicitly click Shush! or Unshush! — never
+    automatically.
+  </p>
+
+  <h2>Third parties</h2>
+  <p>
+    The extension communicates with no external servers and includes no third-party
+    code or libraries.
+  </p>
+
+  <h2>Changes to this policy</h2>
+  <p>
+    If this policy changes, the updated version will be published at the same URL with
+    a new "last updated" date.
+  </p>
+
+  <h2>Contact</h2>
+  <p>
+    Questions can be directed to the developer via the Chrome Web Store listing.
+  </p>
+
+</body>
+</html>
