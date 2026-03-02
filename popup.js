@@ -5,35 +5,28 @@ async function loadNoisyTabs() {
   content.innerHTML = `<div class="no-tabs">${chrome.i18n.getMessage('popupScanning')}</div>`;
 
   try {
-    const [allTabs, currentWindow] = await Promise.all([
-      chrome.tabs.query({}),
-      chrome.windows.getCurrent()
+    const [noisyTabs, [currentActiveTab]] = await Promise.all([
+      chrome.tabs.query({ audible: true }),
+      chrome.tabs.query({ active: true, currentWindow: true })
     ]);
-    // Get the current window's active tab from the already-fetched allTabs
-    const currentActiveTab = allTabs.find(t => t.active && t.windowId === currentWindow.id);
 
-    // Check each tab for audio
     const noisyTabsList = [];
     let totalAudioTabs = 0;
 
-    for (const tab of allTabs) {
+    for (const tab of noisyTabs) {
       // Skip tabs without URLs (like chrome:// pages)
       if (!tab.url || !tab.url.startsWith('http')) continue;
 
-      const isAudible = tab.audible;
+      totalAudioTabs++;
       const isActiveInCurrentWindow = currentActiveTab && tab.id === currentActiveTab.id;
-
-      if (isAudible) {
-        totalAudioTabs++;
-        if (!isActiveInCurrentWindow) {
-          noisyTabsList.push({
-            id: tab.id,
-            title: tab.title || chrome.i18n.getMessage('untitled'),
-            url: tab.url,
-            favIconUrl: tab.favIconUrl || '',
-            muted: tab.mutedInfo?.muted || false
-          });
-        }
+      if (!isActiveInCurrentWindow) {
+        noisyTabsList.push({
+          id: tab.id,
+          title: tab.title || chrome.i18n.getMessage('untitled'),
+          url: tab.url,
+          favIconUrl: tab.favIconUrl || '',
+          muted: tab.mutedInfo?.muted || false
+        });
       }
     }
 

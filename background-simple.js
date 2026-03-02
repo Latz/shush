@@ -101,13 +101,13 @@ function scheduleUpdate() {
 // Fetch tabs data once and update both badge and menu in a single pass
 async function updateAll() {
   try {
-    const [allTabs, [currentActiveTab]] = await Promise.all([
-      chrome.tabs.query({}),
+    const [noisyTabs, [currentActiveTab]] = await Promise.all([
+      chrome.tabs.query({ audible: true }),
       chrome.tabs.query({ active: true, lastFocusedWindow: true })
     ]);
 
     // Update badge
-    const audioCount = allTabs.filter(t => t.audible).length;
+    const audioCount = noisyTabs.length;
     if (audioCount > 0) {
       chrome.action.setBadgeText({ text: audioCount.toString() });
       chrome.action.setBadgeBackgroundColor({ color: '#000000' });
@@ -116,7 +116,7 @@ async function updateAll() {
     }
 
     // Update menu
-    const noisyTabsList = buildNoisyTabsList(allTabs, currentActiveTab);
+    const noisyTabsList = buildNoisyTabsList(noisyTabs, currentActiveTab);
     if (noisyTabsList.length === 0) {
       chrome.contextMenus.removeAll(() => {
         chrome.contextMenus.create({
@@ -133,30 +133,28 @@ async function updateAll() {
   }
 }
 
-// Pure function — builds noisy tabs list from pre-fetched data
-function buildNoisyTabsList(allTabs, currentActiveTab) {
+// Pure function — builds noisy tabs list from pre-fetched audible tabs
+function buildNoisyTabsList(noisyTabs, currentActiveTab) {
   const noisyTabsList = [];
-  for (const tab of allTabs) {
+  for (const tab of noisyTabs) {
     if (!tab.url || !tab.url.startsWith('http')) continue;
-    if (tab.audible) {
-      noisyTabsList.push({
-        id: tab.id,
-        title: tab.title || chrome.i18n.getMessage('untitled'),
-        muted: tab.mutedInfo?.muted || false,
-        isCurrentTab: currentActiveTab && tab.id === currentActiveTab.id
-      });
-    }
+    noisyTabsList.push({
+      id: tab.id,
+      title: tab.title || chrome.i18n.getMessage('untitled'),
+      muted: tab.mutedInfo?.muted || false,
+      isCurrentTab: currentActiveTab && tab.id === currentActiveTab.id
+    });
   }
   return noisyTabsList;
 }
 
 async function scanAndShowResults() {
   try {
-    const [allTabs, [currentActiveTab]] = await Promise.all([
-      chrome.tabs.query({}),
+    const [noisyTabs, [currentActiveTab]] = await Promise.all([
+      chrome.tabs.query({ audible: true }),
       chrome.tabs.query({ active: true, lastFocusedWindow: true })
     ]);
-    const noisyTabsList = buildNoisyTabsList(allTabs, currentActiveTab);
+    const noisyTabsList = buildNoisyTabsList(noisyTabs, currentActiveTab);
     const backgroundNoisyTabs = noisyTabsList.filter(t => !t.isCurrentTab);
 
     if (noisyTabsList.length === 0) {

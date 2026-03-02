@@ -29,9 +29,16 @@ body {
 	color: var(--text);
 }
 
+@keyframes shush-pop {
+	0%   { color: #f44336; }
+	60%  { color: #4caf50; }
+	100% { color: var(--heading); }
+}
+
 h3 {
 	margin: 0 0 10px 0;
 	color: var(--heading);
+	animation: shush-pop 0.8s ease-out forwards;
 }
 
 .tab-item {

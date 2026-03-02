@@ -1,20 +1,20 @@
 # 🤫 Shush!
 
-You know that moment when music is playing somewhere and you have no idea which of your 30 tabs is responsible? That's what this extension is for.
+You know that moment when 🎵 music is playing somewhere and you have no idea which of your 30 tabs is responsible? That's what this extension is for.
 
-It watches all your tabs and tells you which ones are making noise — and lets you mute or jump to them without hunting around.
+It watches all your tabs and tells you which ones are making noise — and lets you 🔇 mute or jump to them without hunting around.
 
 ---
 
 ## 📦 Installation
 
-No Chrome Web Store, no auto-updates — just load it directly:
+No Chrome Web Store, no auto-updates — just load it directly 🔧:
 
 1. Go to `chrome://extensions/`
 2. Turn on **Developer mode** (top right)
-3. Click **Load unpacked** and select the `where-s-the-noise` folder
+3. Click **Load unpacked** and select the `shush` folder
 
-That's it. The extension icon appears in your toolbar.
+That's it. The 🤫 extension icon appears in your toolbar.
 
 ---
 
@@ -50,7 +50,7 @@ The context menu updates automatically in the background whenever a tab's audio 
 
 ## 🤔 What counts as "noisy"?
 
-Any tab where audio is actually coming out — YouTube playing, Spotify running, a video call, a website with autoplay. A paused video doesn't count. A muted tab still shows up (it's technically audible, just silenced by Chrome).
+Any tab where audio is actually coming out — ▶️ YouTube playing, 🎧 Spotify running, a video call, a website with autoplay. A paused video doesn't count. A muted tab still shows up (it's technically audible, just silenced by Chrome).
 
 `chrome://` pages and other non-HTTP tabs are ignored.
 
