@@ -141,15 +141,6 @@ async function updateAll() {
       chrome.tabs.query({ active: true, lastFocusedWindow: true })
     ]);
 
-    // Update badge
-    const audioCount = noisyTabs.length;
-    if (audioCount > 0) {
-      chrome.action.setBadgeText({ text: audioCount.toString() });
-      chrome.action.setBadgeBackgroundColor({ color: '#000000' });
-    } else {
-      chrome.action.setBadgeText({ text: '' });
-    }
-
     // Update menu
     const noisyTabsList = buildNoisyTabsList(noisyTabs, currentActiveTab);
     if (noisyTabsList.length === 0) {
