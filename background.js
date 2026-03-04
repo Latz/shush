@@ -52,8 +52,8 @@ chrome.contextMenus.onClicked.addListener((info) => {
       chrome.tabs.get(tabId)
         .then(t => {
           const nowMuted = !t.mutedInfo?.muted;
-          return chrome.tabs.update(tabId, { muted: nowMuted })
-            .then(updated => injectMediaMute(tabId, updated.mutedInfo?.muted ?? nowMuted));
+          chrome.tabs.update(tabId, { muted: nowMuted });
+          injectMediaMute(tabId, nowMuted);
         })
         .catch(() => {}); // tab may have closed between menu click and handler
     }
