@@ -51,9 +51,18 @@ chrome.contextMenus.onClicked.addListener((info) => {
     if (Number.isFinite(tabId) && tabId > 0) {
       chrome.tabs.get(tabId)
         .then(t => {
-          const nowMuted = !t.mutedInfo?.muted;
+          // Use shushMutedTabs as source of truth: Vivaldi doesn't reliably update mutedInfo
+          const nowMuted = !shushMutedTabs.has(tabId);
           chrome.tabs.update(tabId, { muted: nowMuted });
           injectMediaMute(tabId, nowMuted);
+          // Track tabs muted via context menu so updateAll() keeps them in the menu
+          // (muting makes a tab non-audible, so without tracking it disappears)
+          if (nowMuted) {
+            shushMutedTabs.add(tabId);
+          } else {
+            shushMutedTabs.delete(tabId);
+          }
+          scheduleUpdate();
         })
         .catch(() => {}); // tab may have closed between menu click and handler
     }
@@ -92,7 +101,8 @@ chrome.runtime.onStartup.addListener(() => {
 });
 
 // Listen for tab close to update badge and menu
-chrome.tabs.onRemoved.addListener(() => {
+chrome.tabs.onRemoved.addListener((tabId) => {
+  shushMutedTabs.delete(tabId);
   scheduleUpdate();
 });
 
@@ -126,6 +136,10 @@ chrome.tabs.onActivated.addListener(() => {
   scheduleUpdate();
 });
 
+// Tabs muted via the context menu — kept visible in the menu even after muting
+// makes them non-audible. Cleared when unmuted or tab closed.
+const shushMutedTabs = new Set();
+
 // Single debounced update replacing scheduleBadgeUpdate + scheduleMenuUpdate
 let updateTimeout;
 function scheduleUpdate() {
@@ -136,10 +150,20 @@ function scheduleUpdate() {
 // Fetch tabs data once and update both badge and menu in a single pass
 async function updateAll() {
   try {
-    const [noisyTabs, [currentActiveTab]] = await Promise.all([
+    const shushMutedIds = [...shushMutedTabs];
+    const [audibleTabs, shushMutedDetails, [currentActiveTab]] = await Promise.all([
       chrome.tabs.query({ audible: true }),
+      shushMutedIds.length > 0
+        ? Promise.all(shushMutedIds.map(id => chrome.tabs.get(id).catch(() => null)))
+        : Promise.resolve([]),
       chrome.tabs.query({ active: true, lastFocusedWindow: true })
     ]);
+
+    // Union: audible tabs + Shush-muted tabs (deduped by id)
+    const noisyTabs = [...audibleTabs];
+    for (const t of shushMutedDetails) {
+      if (t && !noisyTabs.some(x => x.id === t.id)) noisyTabs.push(t);
+    }
 
     // Update menu
     const noisyTabsList = buildNoisyTabsList(noisyTabs, currentActiveTab);
@@ -173,7 +197,7 @@ function buildNoisyTabsList(noisyTabs, currentActiveTab) {
     noisyTabsList.push({
       id: tab.id,
       title: tab.title || chrome.i18n.getMessage('untitled'),
-      muted: tab.mutedInfo?.muted || false,
+      muted: shushMutedTabs.has(tab.id) || tab.mutedInfo?.muted || false,
       isCurrentTab: currentActiveTab && tab.id === currentActiveTab.id
     });
   }
