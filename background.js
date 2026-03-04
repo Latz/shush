@@ -49,22 +49,18 @@ chrome.contextMenus.onClicked.addListener((info) => {
   } else if (info.menuItemId.endsWith("-mute")) {
     const tabId = parseInt(info.menuItemId.replace("-mute", "").replace("noisy-tab-", ""), 10);
     if (Number.isFinite(tabId) && tabId > 0) {
-      chrome.tabs.get(tabId)
-        .then(t => {
-          // Use shushMutedTabs as source of truth: Vivaldi doesn't reliably update mutedInfo
-          const nowMuted = !shushMutedTabs.has(tabId);
-          chrome.tabs.update(tabId, { muted: nowMuted });
-          injectMediaMute(tabId, nowMuted);
-          // Track tabs muted via context menu so updateAll() keeps them in the menu
-          // (muting makes a tab non-audible, so without tracking it disappears)
-          if (nowMuted) {
-            shushMutedTabs.add(tabId);
-          } else {
-            shushMutedTabs.delete(tabId);
-          }
-          scheduleUpdate();
-        })
-        .catch(() => {}); // tab may have closed between menu click and handler
+      // Use shushMutedTabs as source of truth: Vivaldi doesn't reliably update mutedInfo
+      const nowMuted = !shushMutedTabs.has(tabId);
+      chrome.tabs.update(tabId, { muted: nowMuted }).catch(() => {}); // tab may have closed
+      injectMediaMute(tabId, nowMuted);
+      // Track tabs muted via context menu so updateAll() keeps them in the menu
+      // (muting makes a tab non-audible, so without tracking it disappears)
+      if (nowMuted) {
+        shushMutedTabs.add(tabId);
+      } else {
+        shushMutedTabs.delete(tabId);
+      }
+      scheduleUpdate();
     }
   }
   // else: click on a noisy-tab-N parent label (current tab or background tab title) — no action
