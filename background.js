@@ -18,9 +18,21 @@ function injectMediaMute(tabId, muted) {
     func: (m) => {
       document.querySelectorAll('audio, video').forEach(el => {
         el.muted = m;
-        // Some players pause in response to el.muted=true; resume them on unmute
         if (!m && el.paused && !el.ended) el.play().catch(() => {});
       });
+      if (m) {
+        if (!window.__shushObserver) {
+          window.__shushObserver = new MutationObserver(() => {
+            document.querySelectorAll('audio, video').forEach(el => { el.muted = true; });
+          });
+          window.__shushObserver.observe(document.documentElement, { childList: true, subtree: true });
+        }
+      } else {
+        if (window.__shushObserver) {
+          window.__shushObserver.disconnect();
+          window.__shushObserver = null;
+        }
+      }
     },
     args: [muted]
   }).catch(() => {}); // silently ignore restricted pages (chrome://, PDFs, etc.)
@@ -54,7 +66,17 @@ chrome.contextMenus.onClicked.addListener((info) => {
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
+    id: "shush-menu",
+    title: "Shush!",
+    contexts: ["all"]
+  }, () => {
+    if (chrome.runtime.lastError) {
+      console.error('Error creating context menu:', chrome.runtime.lastError);
+    }
+  });
+  chrome.contextMenus.create({
     id: "find-noisy-tabs",
+    parentId: "shush-menu",
     title: chrome.i18n.getMessage('menuFindNoisyTabs'),
     contexts: ["all"]
   }, () => {
@@ -74,15 +96,28 @@ chrome.tabs.onRemoved.addListener(() => {
   scheduleUpdate();
 });
 
+// Re-inject mute on navigation for Vivaldi (content script mute is lost on page load)
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.status === 'complete' && tab.mutedInfo?.muted) {
+    injectMediaMute(tabId, true);
+  }
+});
+
 // Listen for tab updates to track audio state
 // Use declarative event filter where supported; fall back to JS-side check (e.g. Vivaldi)
 try {
-  chrome.tabs.onUpdated.addListener(() => {
+  chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     scheduleUpdate();
+    if (changeInfo.audible === true && tab.mutedInfo?.muted) {
+      injectMediaMute(tabId, true);
+    }
   }, { properties: ['audible'] });
 } catch (e) {
-  chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     if (changeInfo.audible !== undefined) scheduleUpdate();
+    if (changeInfo.audible === true && tab.mutedInfo?.muted) {
+      injectMediaMute(tabId, true);
+    }
   });
 }
 
@@ -120,7 +155,13 @@ async function updateAll() {
     if (noisyTabsList.length === 0) {
       chrome.contextMenus.removeAll(() => {
         chrome.contextMenus.create({
+          id: "shush-menu",
+          title: "Shush!",
+          contexts: ["all"]
+        }, () => { if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError); });
+        chrome.contextMenus.create({
           id: "find-noisy-tabs",
+          parentId: "shush-menu",
           title: chrome.i18n.getMessage('menuFindNoisyTabs'),
           contexts: ["all"]
         }, () => { if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError); });
@@ -193,14 +234,8 @@ function showNoisyTabsInMenu(noisyTabsList) {
   return new Promise((resolve) => {
     chrome.contextMenus.removeAll(() => {
       chrome.contextMenus.create({
-        id: "find-noisy-tabs",
-        title: chrome.i18n.getMessage('menuFindNoisyTabs'),
-        contexts: ["all"]
-      }, () => { if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError); });
-
-      chrome.contextMenus.create({
-        id: "separator",
-        type: "separator",
+        id: "shush-menu",
+        title: "Shush!",
         contexts: ["all"]
       }, () => { if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError); });
 
@@ -213,6 +248,7 @@ function showNoisyTabsInMenu(noisyTabsList) {
 
         chrome.contextMenus.create({
           id: itemId,
+          parentId: "shush-menu",
           title: `${tabTitle}${currentLabel}${mutedLabel}`,
           contexts: ["all"]
         }, () => { if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError); });
@@ -221,14 +257,14 @@ function showNoisyTabsInMenu(noisyTabsList) {
           chrome.contextMenus.create({
             id: `${itemId}-switch`,
             parentId: itemId,
-            title: chrome.i18n.getMessage('menuSwitchToTab'),
+            title: `→ ${chrome.i18n.getMessage('menuSwitchToTab')}`,
             contexts: ["all"]
           }, () => { if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError); });
 
           chrome.contextMenus.create({
             id: `${itemId}-mute`,
             parentId: itemId,
-            title: tab.muted ? chrome.i18n.getMessage('menuUnmuteTab') : chrome.i18n.getMessage('menuMuteTab'),
+            title: tab.muted ? `🔊 ${chrome.i18n.getMessage('menuUnmuteTab')}` : `🔇 ${chrome.i18n.getMessage('menuMuteTab')}`,
             contexts: ["all"]
           }, () => { if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError); });
         }
