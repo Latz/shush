@@ -300,3 +300,9 @@ function showNoisyTabsInMenu(noisyTabsList) {
     });
   });
 }
+
+// Conditional CommonJS export for Jest tests.
+// `typeof module` is undefined in Chrome service workers, so this is a no-op in production.
+if (typeof module !== 'undefined') {
+  module.exports = { buildNoisyTabsList, showNoisyTabsInMenu, scanAndShowResults, updateAll, shushMutedTabs, scheduleUpdate };
+}
