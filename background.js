@@ -206,10 +206,18 @@ function buildNoisyTabsList(noisyTabs, currentActiveTab) {
 
 async function scanAndShowResults() {
   try {
-    const [noisyTabs, [currentActiveTab]] = await Promise.all([
+    const shushMutedIds = [...shushMutedTabs];
+    const [audibleTabs, shushMutedDetails, [currentActiveTab]] = await Promise.all([
       chrome.tabs.query({ audible: true }),
+      shushMutedIds.length > 0
+        ? Promise.all(shushMutedIds.map(id => chrome.tabs.get(id).catch(() => null)))
+        : Promise.resolve([]),
       chrome.tabs.query({ active: true, lastFocusedWindow: true })
     ]);
+    const noisyTabs = [...audibleTabs];
+    for (const t of shushMutedDetails) {
+      if (t && !noisyTabs.some(x => x.id === t.id)) noisyTabs.push(t);
+    }
     const noisyTabsList = buildNoisyTabsList(noisyTabs, currentActiveTab);
     const backgroundNoisyTabs = noisyTabsList.filter(t => !t.isCurrentTab);
 
