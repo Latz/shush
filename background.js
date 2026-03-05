@@ -249,6 +249,10 @@ async function scanAndShowResults() {
 // is killed while the menu is in its expanded state (after a scan), the menu will
 // remain expanded until the user clicks "Find Noisy Tabs" again. This is an
 // unavoidable consequence of storing menu state only in Chrome's context menu registry.
+function logContextMenuError() {
+  if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError);
+}
+
 function showNoisyTabsInMenu(noisyTabsList) {
   return new Promise((resolve) => {
     chrome.contextMenus.removeAll(() => {
@@ -256,7 +260,7 @@ function showNoisyTabsInMenu(noisyTabsList) {
         id: "shush-menu",
         title: "Shush!",
         contexts: ["all"]
-      }, () => { if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError); });
+      }, logContextMenuError);
 
       noisyTabsList.forEach((tab) => {
         const cleanTitle = tab.title.replace(/^\(\d+\)\s*/, '');
@@ -270,7 +274,7 @@ function showNoisyTabsInMenu(noisyTabsList) {
           parentId: "shush-menu",
           title: `${tabTitle}${currentLabel}${mutedLabel}`,
           contexts: ["all"]
-        }, () => { if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError); });
+        }, logContextMenuError);
 
         if (!tab.isCurrentTab) {
           chrome.contextMenus.create({
@@ -278,14 +282,14 @@ function showNoisyTabsInMenu(noisyTabsList) {
             parentId: itemId,
             title: `→ ${chrome.i18n.getMessage('menuSwitchToTab')}`,
             contexts: ["all"]
-          }, () => { if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError); });
+          }, logContextMenuError);
 
           chrome.contextMenus.create({
             id: `${itemId}-mute`,
             parentId: itemId,
             title: tab.muted ? `🔊 ${chrome.i18n.getMessage('menuUnmuteTab')}` : `🔇 ${chrome.i18n.getMessage('menuMuteTab')}`,
             contexts: ["all"]
-          }, () => { if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError); });
+          }, logContextMenuError);
         }
       });
 
