@@ -7,6 +7,7 @@ yarn.lock
 dist/
 build/
 *.zip
+coverage/
 
 # OS files
 .DS_Store
@@ -30,3 +31,6 @@ CLAUDE.local.md
 
 # Personal notes
 enhancements.md
+
+# Environment variables (secrets)
+.envrc
