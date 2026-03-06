@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 'use strict';
 
+const DEFAULT_ACTIVE_TAB = { id: 1, url: 'https://current.com', title: 'Current' };
+
 beforeEach(() => {
   document.body.innerHTML = '<div id="content"></div>';
   globalThis.setupChromeMock();
@@ -9,7 +11,7 @@ beforeEach(() => {
   vi.resetModules();
 });
 
-async function loadPopup(audibleTabs = [], activeTab = { id: 1, url: 'https://current.com', title: 'Current' }) {
+async function loadPopup(audibleTabs = [], activeTab = DEFAULT_ACTIVE_TAB) {
   chrome.tabs.query.mockImplementation((filter) => {
     if (filter.audible) return Promise.resolve(audibleTabs);
     if (filter.active) return Promise.resolve([activeTab]);

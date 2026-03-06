@@ -2,6 +2,17 @@
 
 let background;
 
+function getUpdatedListener() {
+  // calls[0] = navigation re-inject listener (line 104)
+  // calls[1] = filtered audible listener (line 113, try block)
+  return chrome.tabs.onUpdated.addListener.mock.calls[1][0];
+}
+
+function getNavListener() {
+  // calls[0] = navigation re-inject listener (line 104)
+  return chrome.tabs.onUpdated.addListener.mock.calls[0][0];
+}
+
 beforeEach(async () => {
   globalThis.setupChromeMock();
   vi.resetModules();
@@ -9,12 +20,6 @@ beforeEach(async () => {
 });
 
 describe('tabs.onUpdated listener (filtered)', () => {
-  function getUpdatedListener() {
-    // calls[0] = navigation re-inject listener (line 104)
-    // calls[1] = filtered audible listener (line 113, try block)
-    return chrome.tabs.onUpdated.addListener.mock.calls[1][0];
-  }
-
   test('calls injectMediaMute when a muted tab becomes audible', () => {
     const listener = getUpdatedListener();
     listener(5, { audible: true }, { id: 5, mutedInfo: { muted: true } });
@@ -39,11 +44,6 @@ describe('tabs.onActivated listener', () => {
 });
 
 describe('tabs.onUpdated navigation listener (Vivaldi mute re-inject)', () => {
-  function getNavListener() {
-    // calls[0] = navigation re-inject listener (line 104)
-    return chrome.tabs.onUpdated.addListener.mock.calls[0][0];
-  }
-
   test('re-injects mute when navigation completes on a muted tab', () => {
     const listener = getNavListener();
     listener(5, { status: 'complete' }, { id: 5, mutedInfo: { muted: true } });
