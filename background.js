@@ -21,15 +21,15 @@ function injectMediaMute(tabId, muted) {
         if (!m && el.paused && !el.ended) el.play().catch(() => {});
       });
       if (m) {
-        if (!window.__shushObserver) {
-          window.__shushObserver = new MutationObserver(() => {
+        if (!globalThis.__shushObserver) {
+          globalThis.__shushObserver = new MutationObserver(() => {
             document.querySelectorAll('audio, video').forEach(el => { el.muted = true; });
           });
-          window.__shushObserver.observe(document.documentElement, { childList: true, subtree: true });
+          globalThis.__shushObserver.observe(document.documentElement, { childList: true, subtree: true });
         }
-      } else if (window.__shushObserver) {
-        window.__shushObserver.disconnect();
-        window.__shushObserver = null;
+      } else if (globalThis.__shushObserver) {
+        globalThis.__shushObserver.disconnect();
+        globalThis.__shushObserver = null;
       }
     },
     args: [muted]
@@ -40,12 +40,12 @@ chrome.contextMenus.onClicked.addListener((info) => {
   if (info.menuItemId === "find-noisy-tabs") {
     scanAndShowResults();
   } else if (info.menuItemId.endsWith("-switch")) {
-    const tabId = parseInt(info.menuItemId.replace("-switch", "").replace("noisy-tab-", ""), 10);
+    const tabId = Number.parseInt(info.menuItemId.replace("-switch", "").replace("noisy-tab-", ""), 10);
     if (Number.isFinite(tabId) && tabId > 0) {
       chrome.tabs.update(tabId, { active: true });
     }
   } else if (info.menuItemId.endsWith("-mute")) {
-    const tabId = parseInt(info.menuItemId.replace("-mute", "").replace("noisy-tab-", ""), 10);
+    const tabId = Number.parseInt(info.menuItemId.replace("-mute", "").replace("noisy-tab-", ""), 10);
     if (Number.isFinite(tabId) && tabId > 0) {
       // Use shushMutedTabs as source of truth: Vivaldi doesn't reliably update mutedInfo
       const nowMuted = !shushMutedTabs.has(tabId);
@@ -117,6 +117,7 @@ try {
     }
   }, { properties: ['audible'] });
 } catch (e) {
+  console.debug('Event filter not supported, falling back to unfiltered listener:', e);
   chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     if (changeInfo.audible !== undefined) scheduleUpdate();
     if (changeInfo.audible === true && tab.mutedInfo?.muted) {
