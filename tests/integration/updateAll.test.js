@@ -8,15 +8,15 @@ beforeEach(async () => {
   background = await import('../../background.js');
 });
 
-describe('updateAll', () => {
-  function mockQueries({ audible = [], activeTab = { id: 1, url: 'https://current.com' } } = {}) {
-    chrome.tabs.query.mockImplementation((filter) => {
-      if (filter.audible) return Promise.resolve(audible);
-      if (filter.active) return Promise.resolve([activeTab]);
-      return Promise.resolve([]);
-    });
-  }
+function mockQueries({ audible = [], activeTab = { id: 1, url: 'https://current.com' } } = {}) {
+  chrome.tabs.query.mockImplementation((filter) => {
+    if (filter.audible) return Promise.resolve(audible);
+    if (filter.active) return Promise.resolve([activeTab]);
+    return Promise.resolve([]);
+  });
+}
 
+describe('updateAll', () => {
   test('resets to basic Shush! menu when no noisy tabs exist', async () => {
     const { updateAll } = background;
     mockQueries({ audible: [] });

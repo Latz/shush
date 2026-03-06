@@ -15,7 +15,7 @@ async function loadNoisyTabs() {
 
     for (const tab of noisyTabs) {
       // Skip tabs without URLs (like chrome:// pages)
-      if (!tab.url || !tab.url.startsWith('http')) continue;
+      if (!tab.url?.startsWith('http')) continue;
 
       totalAudioTabs++;
       const isActiveInCurrentWindow = currentActiveTab && tab.id === currentActiveTab.id;

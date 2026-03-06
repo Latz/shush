@@ -84,18 +84,18 @@ button {
 }
 
 .switch-btn {
-	background: #4caf50;
+	background: #2e7d32;
 	color: white;
 }
 
 .mute-btn {
-	background: #f44336;
+	background: #c62828;
 	color: white;
 	width: 68px;
 }
 
 .unmute-btn {
-	background: #2196f3;
+	background: #1565c0;
 	color: white;
 	width: 68px;
 }

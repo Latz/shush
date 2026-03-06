@@ -27,11 +27,9 @@ function injectMediaMute(tabId, muted) {
           });
           window.__shushObserver.observe(document.documentElement, { childList: true, subtree: true });
         }
-      } else {
-        if (window.__shushObserver) {
-          window.__shushObserver.disconnect();
-          window.__shushObserver = null;
-        }
+      } else if (window.__shushObserver) {
+        window.__shushObserver.disconnect();
+        window.__shushObserver = null;
       }
     },
     args: [muted]
@@ -194,7 +192,7 @@ function buildNoisyTabsList(noisyTabs, currentActiveTab) {
       id: tab.id,
       title: tab.title || chrome.i18n.getMessage('untitled'),
       muted: shushMutedTabs.has(tab.id) || tab.mutedInfo?.muted || false,
-      isCurrentTab: currentActiveTab && tab.id === currentActiveTab.id
+      isCurrentTab: tab.id === currentActiveTab?.id
     });
   }
   return noisyTabsList;

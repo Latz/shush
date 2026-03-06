@@ -8,15 +8,15 @@ beforeEach(async () => {
   background = await import('../../background.js');
 });
 
-describe('scanAndShowResults', () => {
-  function mockQueries({ audible = [], activeTab = { id: 1, url: 'https://current.com', title: 'Current' } } = {}) {
-    chrome.tabs.query.mockImplementation((filter) => {
-      if (filter.audible) return Promise.resolve(audible);
-      if (filter.active) return Promise.resolve([activeTab]);
-      return Promise.resolve([]);
-    });
-  }
+function mockQueries({ audible = [], activeTab = { id: 1, url: 'https://current.com', title: 'Current' } } = {}) {
+  chrome.tabs.query.mockImplementation((filter) => {
+    if (filter.audible) return Promise.resolve(audible);
+    if (filter.active) return Promise.resolve([activeTab]);
+    return Promise.resolve([]);
+  });
+}
 
+describe('scanAndShowResults', () => {
   test('shows all-quiet notification when no audible tabs and no shush-muted tabs', async () => {
     const { scanAndShowResults } = background;
     mockQueries({ audible: [] });
