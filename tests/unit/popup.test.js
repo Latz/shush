@@ -72,4 +72,35 @@ describe('loadNoisyTabs', () => {
     await new Promise(r => setTimeout(r, 50));
     expect(document.getElementById('content').innerHTML).toContain('errorLoadTabs');
   });
+
+  test('switch button activates the tab and closes the popup', async () => {
+    const bgTab = { id: 2, url: 'https://music.com', title: 'Music', favIconUrl: '', mutedInfo: { muted: false } };
+    await loadPopup([bgTab]);
+    document.querySelector('.switch-btn').click();
+    expect(chrome.tabs.update).toHaveBeenCalledWith(2, { active: true });
+    expect(globalThis.close).toHaveBeenCalled();
+  });
+
+  test('mute button sends muteTab message and updates button state', async () => {
+    const bgTab = { id: 2, url: 'https://music.com', title: 'Music', favIconUrl: '', mutedInfo: { muted: false } };
+    chrome.runtime.sendMessage = vi.fn().mockResolvedValue({ muted: true });
+    await loadPopup([bgTab]);
+    document.querySelector('.mute-btn').click();
+    await new Promise(r => setTimeout(r, 50));
+    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'muteTab', tabId: 2, muted: true })
+    );
+    expect(document.querySelector('.unmute-btn')).not.toBeNull();
+  });
+
+  test('mute button logs error when sendMessage rejects', async () => {
+    const bgTab = { id: 2, url: 'https://music.com', title: 'Music', favIconUrl: '', mutedInfo: { muted: false } };
+    chrome.runtime.sendMessage = vi.fn().mockRejectedValue(new Error('Connection closed'));
+    await loadPopup([bgTab]);
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    document.querySelector('.mute-btn').click();
+    await new Promise(r => setTimeout(r, 50));
+    expect(spy).toHaveBeenCalledWith('Mute failed:', expect.any(Error));
+    spy.mockRestore();
+  });
 });
