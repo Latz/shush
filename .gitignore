@@ -34,3 +34,6 @@ enhancements.md
 
 # Environment variables (secrets)
 .envrc
+
+# Git worktrees
+.worktrees/
