@@ -3,7 +3,7 @@
 let background;
 
 beforeEach(async () => {
-  global.setupChromeMock();
+  globalThis.setupChromeMock();
   vi.resetModules();
   background = await import('../../background.js');
 });

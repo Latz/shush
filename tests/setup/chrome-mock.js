@@ -2,7 +2,7 @@
 // `vi` is available as a global in setupFiles when globals: true.
 
 function setupChromeMock() {
-  global.chrome = {
+  globalThis.chrome = {
     tabs: {
       query: vi.fn().mockResolvedValue([]),
       get: vi.fn().mockResolvedValue({}),
@@ -35,5 +35,5 @@ function setupChromeMock() {
   };
 }
 
-global.setupChromeMock = setupChromeMock;
+globalThis.setupChromeMock = setupChromeMock;
 setupChromeMock();
