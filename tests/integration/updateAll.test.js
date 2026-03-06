@@ -80,4 +80,14 @@ describe('updateAll', () => {
     const ids = chrome.contextMenus.create.mock.calls.map(c => c[0].id);
     expect(ids).not.toContain('noisy-tab-999');
   });
+
+  test('logs error and does not throw when tabs query rejects', async () => {
+    const { updateAll } = background;
+    chrome.tabs.query.mockRejectedValue(new Error('network error'));
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await expect(updateAll()).resolves.toBeUndefined();
+    expect(spy).toHaveBeenCalledWith('Update error:', expect.any(Error));
+    spy.mockRestore();
+  });
 });

@@ -96,4 +96,15 @@ describe('scanAndShowResults', () => {
       .filter(c => c[0].id === 'noisy-tab-5');
     expect(noisy5Calls).toHaveLength(1);
   });
+
+  test('shows error notification when tabs query rejects', async () => {
+    const { scanAndShowResults } = background;
+    chrome.tabs.query.mockRejectedValue(new Error('network error'));
+
+    await scanAndShowResults();
+
+    expect(chrome.notifications.create).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'errorScanTabs' })
+    );
+  });
 });
