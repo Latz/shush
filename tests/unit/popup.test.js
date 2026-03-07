@@ -92,6 +92,17 @@ describe('loadNoisyTabs', () => {
     expect(globalThis.close).toHaveBeenCalled();
   });
 
+  test('mute button updates UI immediately before sendMessage resolves', async () => {
+    const bgTab = { id: 2, url: 'https://music.com', title: 'Music', favIconUrl: '', mutedInfo: { muted: false } };
+    let resolve;
+    chrome.runtime.sendMessage = vi.fn().mockReturnValue(new Promise(r => { resolve = r; }));
+    await loadPopup([bgTab]);
+    document.querySelector('.mute-btn').click();
+    // UI should update synchronously before the promise resolves
+    expect(document.querySelector('.unmute-btn')).not.toBeNull();
+    resolve({ muted: true });
+  });
+
   test('mute button sends muteTab message and updates button state', async () => {
     const bgTab = { id: 2, url: 'https://music.com', title: 'Music', favIconUrl: '', mutedInfo: { muted: false } };
     chrome.runtime.sendMessage = vi.fn().mockResolvedValue({ muted: true });
@@ -102,6 +113,18 @@ describe('loadNoisyTabs', () => {
       expect.objectContaining({ action: 'muteTab', tabId: 2, muted: true })
     );
     expect(document.querySelector('.unmute-btn')).not.toBeNull();
+  });
+
+  test('mute button reverts UI on sendMessage error', async () => {
+    const bgTab = { id: 2, url: 'https://music.com', title: 'Music', favIconUrl: '', mutedInfo: { muted: false } };
+    chrome.runtime.sendMessage = vi.fn().mockRejectedValue(new Error('Connection closed'));
+    await loadPopup([bgTab]);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    document.querySelector('.mute-btn').click();
+    await new Promise(r => setTimeout(r, 50));
+    // Should revert to mute-btn after error
+    expect(document.querySelector('.mute-btn')).not.toBeNull();
+    expect(document.querySelector('.unmute-btn')).toBeNull();
   });
 
   test('mute button logs error when sendMessage rejects', async () => {

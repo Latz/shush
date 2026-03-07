@@ -70,6 +70,12 @@ chrome.contextMenus.onClicked.addListener((info) => {
       } else {
         shushMutedTabs.delete(tabId);
       }
+      // Flip the mute item label immediately; scheduleUpdate() will do the full rebuild
+      chrome.contextMenus.update(`noisy-tab-${tabId}-mute`, {
+        title: nowMuted
+          ? `🔊 ${chrome.i18n.getMessage('menuUnmuteTab')}`
+          : `🔇 ${chrome.i18n.getMessage('menuMuteTab')}`
+      }).catch(() => {}); // item may not exist if menu hasn't been expanded
       scheduleUpdate();
     }
   }

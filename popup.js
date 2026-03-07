@@ -78,15 +78,25 @@ async function loadNoisyTabs() {
         muteBtn.textContent = tab.muted ? 'Unshush!' : 'Shush!';
         muteBtn.addEventListener('click', async () => {
           const nowMuted = !tab.muted;
+          // Update UI immediately; correct below if background returns a different state
+          tab.muted = nowMuted;
+          muteBtn.textContent = nowMuted ? 'Unshush!' : 'Shush!';
+          muteBtn.className = nowMuted ? 'unmute-btn' : 'mute-btn';
           try {
             // Delegate mute to background service worker to avoid popup-context revert
             const response = await chrome.runtime.sendMessage({ action: 'muteTab', tabId: tab.id, muted: nowMuted });
             const actuallyMuted = response?.muted ?? nowMuted;
-            tab.muted = actuallyMuted;
-            muteBtn.textContent = actuallyMuted ? 'Unshush!' : 'Shush!';
-            muteBtn.className = actuallyMuted ? 'unmute-btn' : 'mute-btn';
+            if (actuallyMuted !== nowMuted) {
+              tab.muted = actuallyMuted;
+              muteBtn.textContent = actuallyMuted ? 'Unshush!' : 'Shush!';
+              muteBtn.className = actuallyMuted ? 'unmute-btn' : 'mute-btn';
+            }
           } catch (err) {
             console.error('Mute failed:', err);
+            // Revert optimistic update on error
+            tab.muted = !nowMuted;
+            muteBtn.textContent = tab.muted ? 'Unshush!' : 'Shush!';
+            muteBtn.className = tab.muted ? 'unmute-btn' : 'mute-btn';
           }
         });
         actions.appendChild(muteBtn);

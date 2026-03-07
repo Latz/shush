@@ -26,6 +26,14 @@ describe('context menu click handler', () => {
     expect(chrome.tabs.update).toHaveBeenCalledWith(7, { muted: true });
   });
 
+  test('mute item immediately updates the menu item label', () => {
+    getClickHandler()({ menuItemId: 'noisy-tab-7-mute' });
+    expect(chrome.contextMenus.update).toHaveBeenCalledWith(
+      'noisy-tab-7-mute',
+      expect.objectContaining({ title: expect.stringContaining('menuUnmuteTab') })
+    );
+  });
+
   test('mute item unmutes a previously shush-muted tab', () => {
     const { shushMutedTabs } = background;
     shushMutedTabs.add(7);
