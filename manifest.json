@@ -7,7 +7,6 @@
   "permissions": [
     "tabs",
     "notifications",
-    "activeTab",
     "contextMenus",
     "scripting"
   ],
