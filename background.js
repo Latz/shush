@@ -36,6 +36,17 @@ function injectMediaMute(tabId, muted) {
   }).catch(() => {}); // silently ignore restricted pages (chrome://, PDFs, etc.)
 }
 
+// Tabs muted via the context menu — kept visible in the menu even after muting
+// makes them non-audible. Cleared when unmuted or tab closed.
+const shushMutedTabs = new Set();
+
+// Single debounced update replacing scheduleBadgeUpdate + scheduleMenuUpdate
+let updateTimeout;
+function scheduleUpdate() {
+  clearTimeout(updateTimeout);
+  updateTimeout = setTimeout(() => updateAll(), 500);
+}
+
 chrome.contextMenus.onClicked.addListener((info) => {
   if (info.menuItemId === "find-noisy-tabs") {
     scanAndShowResults();
@@ -132,17 +143,6 @@ try {
 chrome.tabs.onActivated.addListener(() => {
   scheduleUpdate();
 });
-
-// Tabs muted via the context menu — kept visible in the menu even after muting
-// makes them non-audible. Cleared when unmuted or tab closed.
-const shushMutedTabs = new Set();
-
-// Single debounced update replacing scheduleBadgeUpdate + scheduleMenuUpdate
-let updateTimeout;
-function scheduleUpdate() {
-  clearTimeout(updateTimeout);
-  updateTimeout = setTimeout(() => updateAll(), 500);
-}
 
 // Fetch tabs data once and update both badge and menu in a single pass
 async function updateAll() {
