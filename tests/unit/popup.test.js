@@ -67,6 +67,14 @@ describe('loadNoisyTabs', () => {
     expect(document.querySelectorAll('.tab-favicon').length).toBe(1);
   });
 
+  test('removes favicon img from DOM on load error', async () => {
+    const tab = { id: 2, url: 'https://music.com', title: 'Music', favIconUrl: 'https://music.com/favicon.ico', mutedInfo: { muted: false } };
+    await loadPopup([tab]);
+    const img = document.querySelector('.tab-favicon');
+    img.dispatchEvent(new Event('error'));
+    expect(document.querySelectorAll('.tab-favicon').length).toBe(0);
+  });
+
   test('shows error message when chrome.tabs.query rejects', async () => {
     chrome.tabs.query.mockRejectedValue(new Error('API error'));
     await import('../../popup.js');

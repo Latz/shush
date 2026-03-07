@@ -50,7 +50,7 @@ async function loadNoisyTabs() {
           const img = document.createElement('img');
           img.className = 'tab-favicon';
           img.src = tab.favIconUrl;
-          img.addEventListener('error', () => { img.style.visibility = 'hidden'; });
+          img.addEventListener('error', () => { img.remove(); });
           item.appendChild(img);
         }
 
