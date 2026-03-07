@@ -77,7 +77,6 @@ chrome.contextMenus.onClicked.addListener((info) => {
 });
 
 // Background service worker for Shush! extension
-// Handles badge tracking and context menu interactions
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
@@ -106,7 +105,7 @@ chrome.runtime.onStartup.addListener(() => {
   updateAll();
 });
 
-// Listen for tab close to update badge and menu
+// Listen for tab close to update menu
 chrome.tabs.onRemoved.addListener((tabId) => {
   shushMutedTabs.delete(tabId);
   scheduleUpdate();
@@ -139,12 +138,12 @@ try {
   });
 }
 
-// Listen for tab activation to update badge and menu
+// Listen for tab activation to update menu
 chrome.tabs.onActivated.addListener(() => {
   scheduleUpdate();
 });
 
-// Fetch tabs data once and update both badge and menu in a single pass
+// Fetch tabs data once and update the context menu in a single pass
 async function updateAll() {
   try {
     const shushMutedIds = [...shushMutedTabs];
