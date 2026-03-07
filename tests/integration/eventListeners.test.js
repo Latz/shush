@@ -3,13 +3,12 @@
 let background;
 
 function getUpdatedListener() {
-  // calls[0] = navigation re-inject listener (line 104)
-  // calls[1] = filtered audible listener (line 113, try block)
-  return chrome.tabs.onUpdated.addListener.mock.calls[1][0];
+  // calls[0] = single merged listener (handles both audible changes and navigation)
+  return chrome.tabs.onUpdated.addListener.mock.calls[0][0];
 }
 
 function getNavListener() {
-  // calls[0] = navigation re-inject listener (line 104)
+  // same merged listener handles navigation re-injection
   return chrome.tabs.onUpdated.addListener.mock.calls[0][0];
 }
 

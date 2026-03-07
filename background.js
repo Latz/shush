@@ -101,25 +101,26 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   scheduleUpdate();
 });
 
-// Re-inject mute on navigation for Vivaldi (content script mute is lost on page load)
-chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if (changeInfo.status === 'complete' && tab.mutedInfo?.muted) {
-    injectMediaMute(tabId, true);
-  }
-});
-
-// Listen for tab updates to track audio state
+// Track audio state and re-inject mute on navigation (mute is lost on page load in Vivaldi)
 // Use declarative event filter where supported; fall back to JS-side check (e.g. Vivaldi)
 try {
   chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-    scheduleUpdate();
-    if (changeInfo.audible === true && tab.mutedInfo?.muted) {
+    if (changeInfo.status === 'complete' && tab.mutedInfo?.muted) {
       injectMediaMute(tabId, true);
     }
-  }, { properties: ['audible'] });
+    if (changeInfo.audible !== undefined) {
+      scheduleUpdate();
+      if (changeInfo.audible === true && tab.mutedInfo?.muted) {
+        injectMediaMute(tabId, true);
+      }
+    }
+  }, { properties: ['audible', 'status'] });
 } catch (e) {
   console.debug('Event filter not supported, falling back to unfiltered listener:', e);
   chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+    if (changeInfo.status === 'complete' && tab.mutedInfo?.muted) {
+      injectMediaMute(tabId, true);
+    }
     if (changeInfo.audible !== undefined) scheduleUpdate();
     if (changeInfo.audible === true && tab.mutedInfo?.muted) {
       injectMediaMute(tabId, true);
