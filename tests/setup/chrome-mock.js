@@ -6,7 +6,7 @@ function setupChromeMock() {
     tabs: {
       query: vi.fn().mockResolvedValue([]),
       get: vi.fn().mockResolvedValue({}),
-      update: vi.fn().mockResolvedValue({}),
+      update: vi.fn().mockResolvedValue({ windowId: 1 }),
       onUpdated: { addListener: vi.fn() },
       onRemoved: { addListener: vi.fn() },
       onActivated: { addListener: vi.fn() },
@@ -22,6 +22,9 @@ function setupChromeMock() {
       removeAll: vi.fn().mockImplementation((cb) => { if (cb) cb(); }),
       update: vi.fn(),
       onClicked: { addListener: vi.fn() },
+    },
+    windows: {
+      update: vi.fn().mockResolvedValue({}),
     },
     notifications: {
       create: vi.fn(),

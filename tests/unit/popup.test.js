@@ -75,11 +75,12 @@ describe('loadNoisyTabs', () => {
     expect(document.getElementById('content').innerHTML).toContain('errorLoadTabs');
   });
 
-  test('switch button activates the tab and closes the popup', async () => {
-    const bgTab = { id: 2, url: 'https://music.com', title: 'Music', favIconUrl: '', mutedInfo: { muted: false } };
+  test('switch button activates the tab, focuses its window, and closes the popup', async () => {
+    const bgTab = { id: 2, windowId: 3, url: 'https://music.com', title: 'Music', favIconUrl: '', mutedInfo: { muted: false } };
     await loadPopup([bgTab]);
     document.querySelector('.switch-btn').click();
     expect(chrome.tabs.update).toHaveBeenCalledWith(2, { active: true });
+    expect(chrome.windows.update).toHaveBeenCalledWith(3, { focused: true });
     expect(globalThis.close).toHaveBeenCalled();
   });
 

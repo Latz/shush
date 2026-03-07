@@ -22,6 +22,7 @@ async function loadNoisyTabs() {
       if (!isActiveInCurrentWindow) {
         noisyTabsList.push({
           id: tab.id,
+          windowId: tab.windowId,
           title: tab.title || chrome.i18n.getMessage('untitled'),
           url: tab.url,
           favIconUrl: tab.favIconUrl || '',
@@ -67,6 +68,7 @@ async function loadNoisyTabs() {
         switchBtn.textContent = chrome.i18n.getMessage('btnSwitch');
         switchBtn.addEventListener('click', () => {
           chrome.tabs.update(tab.id, { active: true });
+          chrome.windows.update(tab.windowId, { focused: true });
           window.close();
         });
         actions.appendChild(switchBtn);

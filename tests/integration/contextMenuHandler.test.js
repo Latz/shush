@@ -13,9 +13,12 @@ function getClickHandler() {
 }
 
 describe('context menu click handler', () => {
-  test('switch item activates the target tab', () => {
+  test('switch item activates the target tab and focuses its window', async () => {
+    chrome.tabs.update.mockResolvedValue({ windowId: 7 });
     getClickHandler()({ menuItemId: 'noisy-tab-5-switch' });
+    await new Promise(r => setTimeout(r, 0));
     expect(chrome.tabs.update).toHaveBeenCalledWith(5, { active: true });
+    expect(chrome.windows.update).toHaveBeenCalledWith(7, { focused: true });
   });
 
   test('mute item mutes an unmuted tab', () => {
