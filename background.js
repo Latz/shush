@@ -104,10 +104,12 @@ chrome.runtime.onInstalled.addListener(() => {
       console.error('Error creating context menu:', chrome.runtime.lastError);
     }
   });
+  chrome.storage.session?.set({ sessionNonce: crypto.randomUUID() });
   updateAll();
 });
 
 chrome.runtime.onStartup.addListener(() => {
+  chrome.storage.session?.set({ sessionNonce: crypto.randomUUID() });
   updateAll();
 });
 
