@@ -15,6 +15,7 @@ function setupChromeMock() {
       onMessage: { addListener: vi.fn() },
       onInstalled: { addListener: vi.fn() },
       onStartup: { addListener: vi.fn() },
+      sendMessage: vi.fn().mockResolvedValue([]),
       lastError: null,
     },
     contextMenus: {

@@ -137,4 +137,45 @@ describe('loadNoisyTabs', () => {
     expect(spy).toHaveBeenCalledWith('Mute failed:', expect.any(Error));
     spy.mockRestore();
   });
+
+  test('shows context-menu-muted tab with unmute button when no audible tabs', async () => {
+    const bgMutedTab = { id: 42, windowId: 5, url: 'https://video.com', title: 'Video', favIconUrl: '' };
+    chrome.runtime.sendMessage = vi.fn().mockImplementation((msg) => {
+      if (msg.action === 'getShushMutedTabs') return Promise.resolve([42]);
+      return Promise.resolve({});
+    });
+    chrome.tabs.get = vi.fn().mockResolvedValue(bgMutedTab);
+    await loadPopup([]);
+    expect(document.querySelectorAll('.unmute-btn').length).toBe(1);
+  });
+
+  test('does not duplicate a tab that is both audible and context-menu-muted', async () => {
+    const tab = { id: 2, url: 'https://music.com', title: 'Music', favIconUrl: '', mutedInfo: { muted: false } };
+    chrome.runtime.sendMessage = vi.fn().mockImplementation((msg) => {
+      if (msg.action === 'getShushMutedTabs') return Promise.resolve([2]);
+      return Promise.resolve({});
+    });
+    chrome.tabs.get = vi.fn().mockResolvedValue(tab);
+    await loadPopup([tab]);
+    expect(document.querySelectorAll('.tab-item').length).toBe(1);
+  });
+
+  test('shows audible tabs normally when getShushMutedTabs rejects', async () => {
+    const bgTab = { id: 2, url: 'https://music.com', title: 'Music', favIconUrl: '', mutedInfo: { muted: false } };
+    chrome.runtime.sendMessage = vi.fn().mockRejectedValue(new Error('SW inactive'));
+    await loadPopup([bgTab]);
+    expect(document.querySelectorAll('.tab-item').length).toBe(1);
+  });
+
+  test('context-menu-muted tab is marked muted regardless of live mutedInfo', async () => {
+    const bgMutedTab = { id: 42, windowId: 5, url: 'https://video.com', title: 'Video', favIconUrl: '', mutedInfo: { muted: false } };
+    chrome.runtime.sendMessage = vi.fn().mockImplementation((msg) => {
+      if (msg.action === 'getShushMutedTabs') return Promise.resolve([42]);
+      return Promise.resolve({});
+    });
+    chrome.tabs.get = vi.fn().mockResolvedValue(bgMutedTab);
+    await loadPopup([]);
+    // Should show as muted (unmute-btn) even though mutedInfo.muted is false
+    expect(document.querySelectorAll('.unmute-btn').length).toBe(1);
+  });
 });

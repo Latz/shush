@@ -116,11 +116,18 @@ async function loadNoisyTabs() {
   try {
     await checkSessionNonce();
 
-    const [audibleTabs, [currentActiveTab], savedMutedTabs] = await Promise.all([
+    const [audibleTabs, [currentActiveTab], savedMutedTabs, bgMutedIds] = await Promise.all([
       chrome.tabs.query({ audible: true }),
       chrome.tabs.query({ active: true, currentWindow: true }),
       loadSavedTabs(),
+      chrome.runtime.sendMessage({ action: 'getShushMutedTabs' }).catch(() => []),
     ]);
+
+    // Fetch live tab details for context-menu-muted tabs
+    const bgMutedResults = await Promise.allSettled(bgMutedIds.map(id => chrome.tabs.get(id)));
+    const bgMutedTabs = bgMutedResults
+      .filter(r => r.status === 'fulfilled')
+      .map(r => r.value);
 
     const activeTabId = currentActiveTab?.id;
 
@@ -155,7 +162,20 @@ async function loadNoisyTabs() {
         muted: tab.mutedInfo?.muted || false
       }));
 
-    const allTabs = [...displayedAudible, ...savedFiltered];
+    // Add context-menu-muted tabs not already shown and not the active tab
+    const savedIds = new Set(savedFiltered.map(t => t.id));
+    const bgMutedFiltered = bgMutedTabs
+      .filter(tab => !audibleIds.has(tab.id) && !savedIds.has(tab.id) && tab.id !== activeTabId && tab.url?.startsWith('http'))
+      .map(tab => ({
+        id: tab.id,
+        windowId: tab.windowId,
+        title: tab.title || chrome.i18n.getMessage('untitled'),
+        url: tab.url,
+        favIconUrl: tab.favIconUrl || '',
+        muted: true
+      }));
+
+    const allTabs = [...displayedAudible, ...savedFiltered, ...bgMutedFiltered];
 
     // Handle different scenarios
     if (totalAudioTabs === 0 && allTabs.length === 0) {

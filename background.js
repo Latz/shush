@@ -5,10 +5,18 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       .then(tab => {
         const actualMuted = tab.mutedInfo?.muted ?? message.muted;
         injectMediaMute(message.tabId, actualMuted);
+        if (actualMuted) {
+          shushMutedTabs.add(message.tabId);
+        } else {
+          shushMutedTabs.delete(message.tabId);
+        }
+        scheduleUpdate();
         sendResponse({ muted: actualMuted });
       })
       .catch(() => sendResponse({ muted: message.muted }));
     return true; // keep channel open for async response
+  } else if (message.action === 'getShushMutedTabs') {
+    sendResponse([...shushMutedTabs]);
   }
 });
 
