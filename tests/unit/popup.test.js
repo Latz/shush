@@ -11,11 +11,11 @@ beforeEach(() => {
   vi.resetModules();
 });
 
-async function loadPopup(audibleTabs = [], activeTab = DEFAULT_ACTIVE_TAB) {
+async function loadPopup(audibleTabs = [], activeTab = DEFAULT_ACTIVE_TAB, allTabs = []) {
   chrome.tabs.query.mockImplementation((filter) => {
     if (filter.audible) return Promise.resolve(audibleTabs);
     if (filter.active) return Promise.resolve([activeTab]);
-    return Promise.resolve([]);
+    return Promise.resolve(allTabs); // chrome.tabs.query({}) — all open tabs
   });
   await import('../../popup.js');
   document.dispatchEvent(new Event('DOMContentLoaded'));
@@ -151,8 +151,7 @@ describe('loadNoisyTabs', () => {
       if (msg.action === 'getShushMutedTabs') return Promise.resolve([42]);
       return Promise.resolve({});
     });
-    chrome.tabs.get = vi.fn().mockResolvedValue(bgMutedTab);
-    await loadPopup([]);
+    await loadPopup([], DEFAULT_ACTIVE_TAB, [bgMutedTab]);
     expect(document.querySelectorAll('.unmute-btn').length).toBe(1);
   });
 
@@ -162,8 +161,7 @@ describe('loadNoisyTabs', () => {
       if (msg.action === 'getShushMutedTabs') return Promise.resolve([2]);
       return Promise.resolve({});
     });
-    chrome.tabs.get = vi.fn().mockResolvedValue(tab);
-    await loadPopup([tab]);
+    await loadPopup([tab], DEFAULT_ACTIVE_TAB, [tab]);
     expect(document.querySelectorAll('.tab-item').length).toBe(1);
   });
 
@@ -180,8 +178,7 @@ describe('loadNoisyTabs', () => {
       if (msg.action === 'getShushMutedTabs') return Promise.resolve([42]);
       return Promise.resolve({});
     });
-    chrome.tabs.get = vi.fn().mockResolvedValue(bgMutedTab);
-    await loadPopup([]);
+    await loadPopup([], DEFAULT_ACTIVE_TAB, [bgMutedTab]);
     // Should show as muted (unmute-btn) even though mutedInfo.muted is false
     expect(document.querySelectorAll('.unmute-btn').length).toBe(1);
   });
@@ -190,11 +187,9 @@ describe('loadNoisyTabs', () => {
 describe('popup storage — loadSavedTabs', () => {
   test('returns saved muted tabs from chrome.storage.local', async () => {
     const savedTab = { tabId: 7, muted: true };
+    const tab7 = { id: 7, windowId: 2, url: 'https://saved.com', title: 'Saved', favIconUrl: '' };
     chrome.storage.local.get.mockResolvedValue({ shush_saved_tabs: [savedTab] });
-    chrome.tabs.get.mockResolvedValue({
-      id: 7, windowId: 2, url: 'https://saved.com', title: 'Saved', favIconUrl: '',
-    });
-    await loadPopup([]);
+    await loadPopup([], DEFAULT_ACTIVE_TAB, [tab7]);
     expect(document.querySelectorAll('.unmute-btn').length).toBe(1);
   });
 
@@ -207,8 +202,8 @@ describe('popup storage — loadSavedTabs', () => {
   test('excludes saved tabs where the tab no longer exists', async () => {
     const savedTab = { tabId: 99, muted: true };
     chrome.storage.local.get.mockResolvedValue({ shush_saved_tabs: [savedTab] });
-    chrome.tabs.get.mockRejectedValue(new Error('No tab'));
-    await loadPopup([]);
+    // Tab 99 not in allTabs → tabById.has(99) is false → excluded
+    await loadPopup([], DEFAULT_ACTIVE_TAB, []);
     expect(document.getElementById('content').innerHTML).toContain('noAudio');
   });
 });

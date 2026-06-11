@@ -19,17 +19,18 @@ beforeEach(async () => {
 });
 
 describe('tabs.onUpdated listener (filtered)', () => {
-  test('calls injectMediaMute when a muted tab becomes audible', () => {
+  test('calls injectMediaMute when a shush-muted tab becomes audible', () => {
+    background.shushMutedTabs.add(5);
     const listener = getUpdatedListener();
-    listener(5, { audible: true }, { id: 5, mutedInfo: { muted: true } });
+    listener(5, { audible: true });
     expect(chrome.scripting.executeScript).toHaveBeenCalledWith(
       expect.objectContaining({ target: expect.objectContaining({ tabId: 5 }) })
     );
   });
 
-  test('does not call injectMediaMute when tab is unmuted', () => {
+  test('does not call injectMediaMute when tab is not shush-muted', () => {
     const listener = getUpdatedListener();
-    listener(5, { audible: true }, { id: 5, mutedInfo: { muted: false } });
+    listener(5, { audible: true });
     expect(chrome.scripting.executeScript).not.toHaveBeenCalled();
   });
 });
@@ -43,17 +44,18 @@ describe('tabs.onActivated listener', () => {
 });
 
 describe('tabs.onUpdated navigation listener (Vivaldi mute re-inject)', () => {
-  test('re-injects mute when navigation completes on a muted tab', () => {
+  test('re-injects mute when navigation completes on a shush-muted tab', () => {
+    background.shushMutedTabs.add(5);
     const listener = getNavListener();
-    listener(5, { status: 'complete' }, { id: 5, mutedInfo: { muted: true } });
+    listener(5, { status: 'complete' });
     expect(chrome.scripting.executeScript).toHaveBeenCalledWith(
       expect.objectContaining({ target: expect.objectContaining({ tabId: 5 }) })
     );
   });
 
-  test('does not re-inject when navigation completes on an unmuted tab', () => {
+  test('does not re-inject when navigation completes on a non-shush-muted tab', () => {
     const listener = getNavListener();
-    listener(5, { status: 'complete' }, { id: 5, mutedInfo: { muted: false } });
+    listener(5, { status: 'complete' });
     expect(chrome.scripting.executeScript).not.toHaveBeenCalled();
   });
 });

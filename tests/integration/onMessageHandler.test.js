@@ -68,7 +68,7 @@ describe('onMessage handler — muteTab persistence', () => {
   test('saves shushMutedTabs to storage after muting', async () => {
     chrome.tabs.update.mockResolvedValue({ mutedInfo: { muted: true } });
     onMessageHandler({ action: 'muteTab', tabId: 5, muted: true }, null, vi.fn());
-    await new Promise(r => setTimeout(r, 0));
+    await new Promise(r => setTimeout(r, 150)); // outlast 100ms saveShushMutedTabs debounce
     expect(chrome.storage.local.set).toHaveBeenCalledWith(
       expect.objectContaining({ shush_muted_tabs: expect.arrayContaining([5]) })
     );
@@ -79,7 +79,7 @@ describe('onMessage handler — muteTab persistence', () => {
     bg.shushMutedTabs.add(5);
     chrome.tabs.update.mockResolvedValue({ mutedInfo: { muted: false } });
     onMessageHandler({ action: 'muteTab', tabId: 5, muted: false }, null, vi.fn());
-    await new Promise(r => setTimeout(r, 0));
+    await new Promise(r => setTimeout(r, 150)); // outlast 100ms saveShushMutedTabs debounce
     const lastCall = chrome.storage.local.set.mock.calls.at(-1)[0];
     expect(lastCall.shush_muted_tabs).not.toContain(5);
   });

@@ -54,8 +54,13 @@ function injectMediaMute(tabId, muted) {
 // makes them non-audible. Cleared when unmuted or tab closed.
 const shushMutedTabs = new Set();
 
+// Debounced: batches rapid storage writes (e.g. closing a window with many tabs)
+let saveTimeout;
 function saveShushMutedTabs() {
-  chrome.storage.local.set({ shush_muted_tabs: [...shushMutedTabs] });
+  clearTimeout(saveTimeout);
+  saveTimeout = setTimeout(() => {
+    chrome.storage.local.set({ shush_muted_tabs: [...shushMutedTabs] });
+  }, 100);
 }
 
 // Restore persisted muted-tab IDs when the service worker restarts
@@ -70,7 +75,15 @@ function saveShushMutedTabs() {
 let updateTimeout;
 function scheduleUpdate() {
   clearTimeout(updateTimeout);
-  updateTimeout = setTimeout(() => updateAll(), 500);
+  // 150ms: snapshot diffing in updateAll makes no-op calls near-free, so debounce can be short
+  updateTimeout = setTimeout(() => updateAll(), 150);
+}
+
+// Snapshot of the last menu render — used to skip redundant full rebuilds
+let lastMenuSnapshot = '';
+
+function menuSnapshot(noisyTabsList) {
+  return JSON.stringify(noisyTabsList.map(t => `${t.id}:${t.muted}:${t.isCurrentTab}`));
 }
 
 function handleMuteToggle(tabId) {
@@ -92,6 +105,8 @@ function handleMuteToggle(tabId) {
       ? `🔊 ${chrome.i18n.getMessage('menuUnmuteTab')}`
       : `🔇 ${chrome.i18n.getMessage('menuMuteTab')}`
   }).catch(() => {}); // item may not exist if menu hasn't been expanded
+  // Invalidate snapshot so the next updateAll() forces a full rebuild
+  lastMenuSnapshot = '';
   scheduleUpdate();
 }
 
@@ -154,25 +169,25 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 // Track audio state and re-inject mute on navigation (mute is lost on page load in Vivaldi)
 // Use declarative event filter where supported; fall back to JS-side check (e.g. Vivaldi)
 try {
-  chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-    if (changeInfo.status === 'complete' && tab.mutedInfo?.muted) {
+  chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+    if (changeInfo.status === 'complete' && shushMutedTabs.has(tabId)) {
       injectMediaMute(tabId, true);
     }
     if (changeInfo.audible !== undefined) {
       scheduleUpdate();
-      if (changeInfo.audible === true && tab.mutedInfo?.muted) {
+      if (changeInfo.audible === true && shushMutedTabs.has(tabId)) {
         injectMediaMute(tabId, true);
       }
     }
   }, { properties: ['audible', 'status'] });
 } catch (e) {
   console.debug('Event filter not supported, falling back to unfiltered listener:', e);
-  chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-    if (changeInfo.status === 'complete' && tab.mutedInfo?.muted) {
+  chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+    if (changeInfo.status === 'complete' && shushMutedTabs.has(tabId)) {
       injectMediaMute(tabId, true);
     }
     if (changeInfo.audible !== undefined) scheduleUpdate();
-    if (changeInfo.audible === true && tab.mutedInfo?.muted) {
+    if (changeInfo.audible === true && shushMutedTabs.has(tabId)) {
       injectMediaMute(tabId, true);
     }
   });
@@ -183,26 +198,34 @@ chrome.tabs.onActivated.addListener(() => {
   scheduleUpdate();
 });
 
+// Shared data-fetch for updateAll and scanAndShowResults — one Promise.all for both
+async function fetchNoisyData() {
+  const shushMutedIds = [...shushMutedTabs];
+  const [audibleTabs, shushMutedDetails, [currentActiveTab]] = await Promise.all([
+    chrome.tabs.query({ audible: true }),
+    shushMutedIds.length > 0
+      ? Promise.all(shushMutedIds.map(id => chrome.tabs.get(id).catch(() => null)))
+      : Promise.resolve([]),
+    chrome.tabs.query({ active: true, lastFocusedWindow: true })
+  ]);
+  const noisyTabs = [...audibleTabs];
+  for (const t of shushMutedDetails) {
+    if (t && !noisyTabs.some(x => x.id === t.id)) noisyTabs.push(t);
+  }
+  return { noisyTabs, currentActiveTab };
+}
+
 // Fetch tabs data once and update the context menu in a single pass
 async function updateAll() {
   try {
-    const shushMutedIds = [...shushMutedTabs];
-    const [audibleTabs, shushMutedDetails, [currentActiveTab]] = await Promise.all([
-      chrome.tabs.query({ audible: true }),
-      shushMutedIds.length > 0
-        ? Promise.all(shushMutedIds.map(id => chrome.tabs.get(id).catch(() => null)))
-        : Promise.resolve([]),
-      chrome.tabs.query({ active: true, lastFocusedWindow: true })
-    ]);
-
-    // Union: audible tabs + Shush-muted tabs (deduped by id)
-    const noisyTabs = [...audibleTabs];
-    for (const t of shushMutedDetails) {
-      if (t && !noisyTabs.some(x => x.id === t.id)) noisyTabs.push(t);
-    }
-
-    // Update menu
+    const { noisyTabs, currentActiveTab } = await fetchNoisyData();
     const noisyTabsList = buildNoisyTabsList(noisyTabs, currentActiveTab);
+
+    // Skip full rebuild when nothing visible changed (IPC-heavy operation)
+    const snapshot = menuSnapshot(noisyTabsList);
+    if (snapshot === lastMenuSnapshot) return;
+    lastMenuSnapshot = snapshot;
+
     if (noisyTabsList.length === 0) {
       chrome.contextMenus.removeAll(() => {
         chrome.contextMenus.create({
@@ -242,18 +265,7 @@ function buildNoisyTabsList(noisyTabs, currentActiveTab) {
 
 async function scanAndShowResults() {
   try {
-    const shushMutedIds = [...shushMutedTabs];
-    const [audibleTabs, shushMutedDetails, [currentActiveTab]] = await Promise.all([
-      chrome.tabs.query({ audible: true }),
-      shushMutedIds.length > 0
-        ? Promise.all(shushMutedIds.map(id => chrome.tabs.get(id).catch(() => null)))
-        : Promise.resolve([]),
-      chrome.tabs.query({ active: true, lastFocusedWindow: true })
-    ]);
-    const noisyTabs = [...audibleTabs];
-    for (const t of shushMutedDetails) {
-      if (t && !noisyTabs.some(x => x.id === t.id)) noisyTabs.push(t);
-    }
+    const { noisyTabs, currentActiveTab } = await fetchNoisyData();
     const noisyTabsList = buildNoisyTabsList(noisyTabs, currentActiveTab);
     const backgroundNoisyTabs = noisyTabsList.filter(t => !t.isCurrentTab);
 
@@ -341,4 +353,4 @@ function showNoisyTabsInMenu(noisyTabsList) {
   });
 }
 
-export { buildNoisyTabsList, showNoisyTabsInMenu, scanAndShowResults, updateAll, shushMutedTabs, scheduleUpdate };
+export { buildNoisyTabsList, showNoisyTabsInMenu, scanAndShowResults, updateAll, shushMutedTabs, scheduleUpdate, fetchNoisyData };

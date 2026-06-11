@@ -23,18 +23,19 @@ describe('event filter fallback', () => {
     spy.mockRestore();
   });
 
-  test('fallback listener calls injectMediaMute when muted tab becomes audible', async () => {
+  test('fallback listener calls injectMediaMute when shush-muted tab becomes audible', async () => {
     globalThis.setupChromeMock();
     chrome.tabs.onUpdated.addListener
       .mockImplementationOnce(() => { throw new Error('Filter not supported'); });
     vi.spyOn(console, 'debug').mockImplementation(() => {});
 
     vi.resetModules();
-    await import('../../background.js');
+    const bg = await import('../../background.js');
+    bg.shushMutedTabs.add(7);
 
     // calls[0]=filtered (throws), calls[1]=fallback
     const fallbackListener = chrome.tabs.onUpdated.addListener.mock.calls[1][0];
-    fallbackListener(7, { audible: true }, { id: 7, mutedInfo: { muted: true } });
+    fallbackListener(7, { audible: true });
 
     expect(chrome.scripting.executeScript).toHaveBeenCalledWith(
       expect.objectContaining({ target: expect.objectContaining({ tabId: 7 }) })

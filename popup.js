@@ -1,12 +1,11 @@
 // Popup script for Shush! extension
 
-let displayedTabs = [];
 const tabDataMap = new Map();
 
 async function checkSessionNonce() {
   if (!chrome.storage?.session) {
     // session storage unavailable (e.g. Vivaldi) — skip nonce check.
-    // loadSavedTabs() verifies each tab via chrome.tabs.get(), so closed/invalid tabs
+    // loadSavedTabs() verifies each tab via tabById, so closed/invalid tabs
     // from previous sessions are naturally filtered out without needing explicit cleanup.
     return;
   }
@@ -18,28 +17,20 @@ async function checkSessionNonce() {
   }
 }
 
-async function loadSavedTabs() {
-  const { shush_saved_tabs: saved } = await chrome.storage.local.get('shush_saved_tabs');
+// Resolves saved muted tabs using the shared tabById map — no extra IPC calls
+function loadSavedTabs(savedData, tabById) {
+  const saved = savedData.shush_saved_tabs;
   if (!saved) return [];
-  try {
-    const results = await Promise.allSettled(
-      saved.map(entry => chrome.tabs.get(entry.tabId))
-    );
-    return results
-      .map((result, i) => ({ result, entry: saved[i] }))
-      .filter(({ result, entry }) => result.status === 'fulfilled' && entry.muted)
-      .map(({ result, entry }) => ({
-        ...result.value,
-        // Use saved muted state — live mutedInfo is unreliable in Vivaldi
-        mutedInfo: { muted: entry.muted }
-      }));
-  } catch {
-    return [];
-  }
+  return saved
+    .filter(entry => entry.muted && tabById.has(entry.tabId))
+    .map(entry => ({
+      ...tabById.get(entry.tabId),
+      // Use saved muted state — live mutedInfo is unreliable in Vivaldi
+      mutedInfo: { muted: entry.muted }
+    }));
 }
 
 function renderTabs(noisyTabsList) {
-  displayedTabs = noisyTabsList;
   tabDataMap.clear();
   noisyTabsList.forEach(tab => { tabDataMap.set(tab.id, tab); });
 
@@ -91,18 +82,21 @@ async function loadNoisyTabs() {
   try {
     await checkSessionNonce();
 
-    const [audibleTabs, [currentActiveTab], savedMutedTabs, bgMutedIds] = await Promise.all([
+    const [audibleTabs, [currentActiveTab], allTabs, bgMutedIds, savedData] = await Promise.all([
       chrome.tabs.query({ audible: true }),
       chrome.tabs.query({ active: true, currentWindow: true }),
-      loadSavedTabs(),
+      chrome.tabs.query({}),
       chrome.runtime.sendMessage({ action: 'getShushMutedTabs' }).catch(() => []),
+      chrome.storage.local.get('shush_saved_tabs'),
     ]);
 
-    // Fetch live tab details for context-menu-muted tabs
-    const bgMutedResults = await Promise.allSettled(bgMutedIds.map(id => chrome.tabs.get(id)));
-    const bgMutedTabs = bgMutedResults
-      .filter(r => r.status === 'fulfilled')
-      .map(r => r.value);
+    // Single map covering all open tabs — used instead of N individual chrome.tabs.get calls
+    const tabById = new Map(allTabs.map(t => [t.id, t]));
+    const savedMutedTabs = loadSavedTabs(savedData, tabById);
+
+    const bgMutedTabs = bgMutedIds
+      .map(id => tabById.get(id))
+      .filter(Boolean);
 
     const activeTabId = currentActiveTab?.id;
 
@@ -150,17 +144,17 @@ async function loadNoisyTabs() {
         muted: true
       }));
 
-    const allTabs = [...displayedAudible, ...savedFiltered, ...bgMutedFiltered];
+    const allDisplayedTabs = [...displayedAudible, ...savedFiltered, ...bgMutedFiltered];
 
     // Handle different scenarios
-    if (totalAudioTabs === 0 && allTabs.length === 0) {
-      displayedTabs = [];
+    if (totalAudioTabs === 0 && allDisplayedTabs.length === 0) {
+      tabDataMap.clear();
       content.innerHTML = `<div class="no-tabs">${chrome.i18n.getMessage('noAudio')}</div>`;
-    } else if (allTabs.length === 0 && totalAudioTabs > 0) {
-      displayedTabs = [];
+    } else if (allDisplayedTabs.length === 0 && totalAudioTabs > 0) {
+      tabDataMap.clear();
       content.innerHTML = `<div class="no-tabs">${chrome.i18n.getMessage('audioCurrentTab')}</div>`;
     } else {
-      renderTabs(allTabs);
+      renderTabs(allDisplayedTabs);
     }
   } catch (error) {
     console.error('Error loading noisy tabs:', error);
@@ -169,7 +163,7 @@ async function loadNoisyTabs() {
 }
 
 window.addEventListener('unload', () => {
-  const toSave = displayedTabs.map(tab => ({
+  const toSave = [...tabDataMap.values()].map(tab => ({
     tabId: tab.id,
     title: tab.title,
     favIconUrl: tab.favIconUrl,
