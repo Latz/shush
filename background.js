@@ -26,6 +26,12 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 });
 
+/**
+ * Injects a content script that mutes/unmutes all audio and video elements in a tab.
+ * Also installs a MutationObserver when muting so dynamically added media stays muted.
+ * @param {number} tabId
+ * @param {boolean} muted
+ */
 function injectMediaMute(tabId, muted) {
   chrome.scripting.executeScript({
     target: { tabId, allFrames: true },
@@ -56,6 +62,7 @@ const shushMutedTabs = new Set();
 
 // Debounced: batches rapid storage writes (e.g. closing a window with many tabs)
 let saveTimeout;
+/** Persists shushMutedTabs to chrome.storage.local (debounced 100 ms). */
 function saveShushMutedTabs() {
   clearTimeout(saveTimeout);
   saveTimeout = setTimeout(() => {
@@ -73,6 +80,7 @@ function saveShushMutedTabs() {
 
 // Single debounced update replacing scheduleBadgeUpdate + scheduleMenuUpdate
 let updateTimeout;
+/** Queues a context menu rebuild; resets the timer on each call (150 ms debounce). */
 function scheduleUpdate() {
   clearTimeout(updateTimeout);
   // 150ms: snapshot diffing in updateAll makes no-op calls near-free, so debounce can be short
@@ -82,10 +90,21 @@ function scheduleUpdate() {
 // Snapshot of the last menu render — used to skip redundant full rebuilds
 let lastMenuSnapshot = '';
 
+/**
+ * Produces a stable string fingerprint of the current noisy-tab list.
+ * Used by updateAll to skip context menu rebuilds when nothing has changed.
+ * @param {Array<{id: number, muted: boolean, isCurrentTab: boolean}>} noisyTabsList
+ * @returns {string}
+ */
 function menuSnapshot(noisyTabsList) {
   return JSON.stringify(noisyTabsList.map(t => `${t.id}:${t.muted}:${t.isCurrentTab}`));
 }
 
+/**
+ * Toggles the mute state of a tab triggered from the context menu.
+ * Updates shushMutedTabs, flips the menu item label immediately, then schedules a full rebuild.
+ * @param {number} tabId
+ */
 function handleMuteToggle(tabId) {
   // Use shushMutedTabs as source of truth: Vivaldi doesn't reliably update mutedInfo
   const nowMuted = !shushMutedTabs.has(tabId);
@@ -198,7 +217,11 @@ chrome.tabs.onActivated.addListener(() => {
   scheduleUpdate();
 });
 
-// Shared data-fetch for updateAll and scanAndShowResults — one Promise.all for both
+/**
+ * Fetches audible tabs, shush-muted tab details, and the focused active tab in one round-trip.
+ * Shared by updateAll and scanAndShowResults to avoid duplicate queries.
+ * @returns {Promise<{noisyTabs: chrome.tabs.Tab[], currentActiveTab: chrome.tabs.Tab|undefined}>}
+ */
 async function fetchNoisyData() {
   const shushMutedIds = [...shushMutedTabs];
   const [audibleTabs, shushMutedDetails, [currentActiveTab]] = await Promise.all([
@@ -215,7 +238,11 @@ async function fetchNoisyData() {
   return { noisyTabs, currentActiveTab };
 }
 
-// Fetch tabs data once and update the context menu in a single pass
+/**
+ * Rebuilds the context menu to reflect the current set of noisy tabs.
+ * Skips the rebuild if the tab list and mute states match the previous render.
+ * @returns {Promise<void>}
+ */
 async function updateAll() {
   try {
     const { noisyTabs, currentActiveTab } = await fetchNoisyData();
@@ -248,7 +275,13 @@ async function updateAll() {
   }
 }
 
-// Pure function — builds noisy tabs list from pre-fetched audible tabs
+/**
+ * Transforms raw tab objects into the display shape used by the menu and popup.
+ * Pure function — reads shushMutedTabs but never mutates state.
+ * @param {chrome.tabs.Tab[]} noisyTabs - Audible + shush-muted tabs, already deduped.
+ * @param {chrome.tabs.Tab|undefined} currentActiveTab
+ * @returns {Array<{id: number, title: string, muted: boolean, isCurrentTab: boolean}>}
+ */
 function buildNoisyTabsList(noisyTabs, currentActiveTab) {
   const noisyTabsList = [];
   for (const tab of noisyTabs) {
@@ -263,6 +296,11 @@ function buildNoisyTabsList(noisyTabs, currentActiveTab) {
   return noisyTabsList;
 }
 
+/**
+ * Triggered by the "Find Noisy Tabs" menu item.
+ * Shows a notification when there is nothing to act on, otherwise populates the menu.
+ * @returns {Promise<void>}
+ */
 async function scanAndShowResults() {
   try {
     const { noisyTabs, currentActiveTab } = await fetchNoisyData();
@@ -301,10 +339,17 @@ async function scanAndShowResults() {
 // is killed while the menu is in its expanded state (after a scan), the menu will
 // remain expanded until the user clicks "Find Noisy Tabs" again. This is an
 // unavoidable consequence of storing menu state only in Chrome's context menu registry.
+/** Passed as the callback to chrome.contextMenus.create/update; logs any lastError. */
 function logContextMenuError() {
   if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError);
 }
 
+/**
+ * Clears the Shush! context menu and rebuilds it with one sub-tree per noisy tab.
+ * Uses a Promise wrapper because chrome.contextMenus only exposes callback-style APIs.
+ * @param {Array<{id: number, title: string, muted: boolean, isCurrentTab: boolean}>} noisyTabsList
+ * @returns {Promise<void>}
+ */
 function showNoisyTabsInMenu(noisyTabsList) {
   return new Promise((resolve) => {
     chrome.contextMenus.removeAll(() => {

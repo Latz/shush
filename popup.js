@@ -2,6 +2,11 @@
 
 const tabDataMap = new Map();
 
+/**
+ * Detects a new browser session and clears stale saved tabs when one is found.
+ * Skipped silently on browsers (e.g. Vivaldi) that don't support chrome.storage.session.
+ * @returns {Promise<void>}
+ */
 async function checkSessionNonce() {
   if (!chrome.storage?.session) {
     // session storage unavailable (e.g. Vivaldi) — skip nonce check.
@@ -17,7 +22,13 @@ async function checkSessionNonce() {
   }
 }
 
-// Resolves saved muted tabs using the shared tabById map — no extra IPC calls
+/**
+ * Filters persisted muted tabs to those still open in the current browser session.
+ * Uses the shared tabById Map to avoid extra chrome.tabs.get IPC calls.
+ * @param {{shush_saved_tabs?: Array<{tabId: number, muted: boolean}>}} savedData
+ * @param {Map<number, chrome.tabs.Tab>} tabById
+ * @returns {Array<chrome.tabs.Tab & {mutedInfo: {muted: boolean}}>}
+ */
 function loadSavedTabs(savedData, tabById) {
   const saved = savedData.shush_saved_tabs;
   if (!saved) return [];
@@ -30,6 +41,11 @@ function loadSavedTabs(savedData, tabById) {
     }));
 }
 
+/**
+ * Replaces #content with a tab item for each entry in noisyTabsList.
+ * Populates tabDataMap so the delegated click listener can resolve tab objects by ID.
+ * @param {Array<{id: number, windowId: number, title: string, favIconUrl: string, muted: boolean}>} noisyTabsList
+ */
 function renderTabs(noisyTabsList) {
   tabDataMap.clear();
   noisyTabsList.forEach(tab => { tabDataMap.set(tab.id, tab); });
@@ -75,6 +91,11 @@ function renderTabs(noisyTabsList) {
   });
 }
 
+/**
+ * Entry point called on DOMContentLoaded.
+ * Fetches audible, saved, and context-menu-muted tabs in parallel, then renders them.
+ * @returns {Promise<void>}
+ */
 async function loadNoisyTabs() {
   const content = document.getElementById('content');
   content.innerHTML = `<div class="no-tabs">${chrome.i18n.getMessage('popupScanning')}</div>`;
