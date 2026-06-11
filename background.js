@@ -147,6 +147,12 @@ chrome.contextMenus.onClicked.addListener(async (info) => {
   // else: click on a noisy-tab-N parent label (current tab or background tab title) — no action
 });
 
+chrome.commands.onCommand.addListener(async (command) => {
+  if (command !== 'toggle-mute-current') return;
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (tab) handleMuteToggle(tab.id);
+});
+
 // Background service worker for Shush! extension
 
 chrome.runtime.onInstalled.addListener(() => {

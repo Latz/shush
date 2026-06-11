@@ -12,5 +12,6 @@
   "menuSwitchToTab":{ "message": "Switch to Tab" },
   "menuMuteTab":    { "message": "Mute Tab" },
   "menuUnmuteTab":  { "message": "Unmute Tab" },
-  "errorScanTabs":  { "message": "Error scanning tabs. Please try again." }
+  "errorScanTabs":  { "message": "Error scanning tabs. Please try again." },
+  "cmdToggleMute":  { "message": "Mute or unmute the current tab" }
 }
