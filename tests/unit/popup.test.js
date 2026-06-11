@@ -95,7 +95,11 @@ describe('loadNoisyTabs', () => {
   test('mute button updates UI immediately before sendMessage resolves', async () => {
     const bgTab = { id: 2, url: 'https://music.com', title: 'Music', favIconUrl: '', mutedInfo: { muted: false } };
     let resolve;
-    chrome.runtime.sendMessage = vi.fn().mockReturnValue(new Promise(r => { resolve = r; }));
+    const pendingMutePromise = new Promise(r => { resolve = r; });
+    chrome.runtime.sendMessage = vi.fn().mockImplementation((msg) => {
+      if (msg.action === 'getShushMutedTabs') return Promise.resolve([]);
+      return pendingMutePromise;
+    });
     await loadPopup([bgTab]);
     document.querySelector('.mute-btn').click();
     // UI should update synchronously before the promise resolves
@@ -105,7 +109,10 @@ describe('loadNoisyTabs', () => {
 
   test('mute button sends muteTab message and updates button state', async () => {
     const bgTab = { id: 2, url: 'https://music.com', title: 'Music', favIconUrl: '', mutedInfo: { muted: false } };
-    chrome.runtime.sendMessage = vi.fn().mockResolvedValue({ muted: true });
+    chrome.runtime.sendMessage = vi.fn().mockImplementation((msg) => {
+      if (msg.action === 'getShushMutedTabs') return Promise.resolve([]);
+      return Promise.resolve({ muted: true });
+    });
     await loadPopup([bgTab]);
     document.querySelector('.mute-btn').click();
     await new Promise(r => setTimeout(r, 50));

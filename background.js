@@ -1,19 +1,22 @@
 // Handle mute requests from popup (avoids popup-context revert behaviour)
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.action === 'muteTab') {
-    chrome.tabs.update(message.tabId, { muted: message.muted })
+    const { tabId, muted } = message;
+    if (!Number.isInteger(tabId) || tabId <= 0 || typeof muted !== 'boolean') return;
+    chrome.tabs.update(tabId, { muted })
       .then(tab => {
-        const actualMuted = tab.mutedInfo?.muted ?? message.muted;
-        injectMediaMute(message.tabId, actualMuted);
+        const actualMuted = tab.mutedInfo?.muted ?? muted;
+        injectMediaMute(tabId, actualMuted);
         if (actualMuted) {
-          shushMutedTabs.add(message.tabId);
+          shushMutedTabs.add(tabId);
         } else {
-          shushMutedTabs.delete(message.tabId);
+          shushMutedTabs.delete(tabId);
         }
+        saveShushMutedTabs();
         scheduleUpdate();
         sendResponse({ muted: actualMuted });
       })
-      .catch(() => sendResponse({ muted: message.muted }));
+      .catch(() => sendResponse({ muted }));
     return true; // keep channel open for async response
   } else if (message.action === 'getShushMutedTabs') {
     sendResponse([...shushMutedTabs]);
@@ -48,6 +51,19 @@ function injectMediaMute(tabId, muted) {
 // makes them non-audible. Cleared when unmuted or tab closed.
 const shushMutedTabs = new Set();
 
+function saveShushMutedTabs() {
+  chrome.storage.session?.set({ shushMutedTabs: [...shushMutedTabs] });
+}
+
+// Restore persisted muted-tab IDs when the service worker restarts
+(async () => {
+  if (!chrome.storage?.session) return;
+  const result = await chrome.storage.session.get('shushMutedTabs');
+  if (Array.isArray(result?.shushMutedTabs)) {
+    result.shushMutedTabs.forEach(id => shushMutedTabs.add(id));
+  }
+})();
+
 // Single debounced update replacing scheduleBadgeUpdate + scheduleMenuUpdate
 let updateTimeout;
 function scheduleUpdate() {
@@ -78,6 +94,7 @@ chrome.contextMenus.onClicked.addListener((info) => {
       } else {
         shushMutedTabs.delete(tabId);
       }
+      saveShushMutedTabs();
       // Flip the mute item label immediately; scheduleUpdate() will do the full rebuild
       chrome.contextMenus.update(`noisy-tab-${tabId}-mute`, {
         title: nowMuted
@@ -124,6 +141,7 @@ chrome.runtime.onStartup.addListener(() => {
 // Listen for tab close to update menu
 chrome.tabs.onRemoved.addListener((tabId) => {
   shushMutedTabs.delete(tabId);
+  saveShushMutedTabs();
   scheduleUpdate();
 });
 

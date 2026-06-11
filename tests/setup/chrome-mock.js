@@ -36,6 +36,17 @@ function setupChromeMock() {
     scripting: {
       executeScript: vi.fn().mockResolvedValue([]),
     },
+    storage: {
+      local: {
+        get: vi.fn().mockResolvedValue({}),
+        set: vi.fn().mockResolvedValue(undefined),
+        remove: vi.fn().mockResolvedValue(undefined),
+      },
+      session: {
+        get: vi.fn().mockResolvedValue({}),
+        set: vi.fn().mockResolvedValue(undefined),
+      },
+    },
   };
 }
 

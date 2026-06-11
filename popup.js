@@ -10,18 +10,17 @@ async function checkSessionNonce() {
     return;
   }
   const { sessionNonce } = await chrome.storage.session.get('sessionNonce');
-  const storedNonce = localStorage.getItem('shush_session_nonce');
+  const { shush_session_nonce: storedNonce } = await chrome.storage.local.get('shush_session_nonce');
   if (!sessionNonce || sessionNonce !== storedNonce) {
-    localStorage.removeItem('shush_saved_tabs');
-    localStorage.setItem('shush_session_nonce', sessionNonce ?? '');
+    await chrome.storage.local.remove('shush_saved_tabs');
+    chrome.storage.local.set({ shush_session_nonce: sessionNonce ?? '' });
   }
 }
 
 async function loadSavedTabs() {
-  const raw = localStorage.getItem('shush_saved_tabs');
-  if (!raw) return [];
+  const { shush_saved_tabs: saved } = await chrome.storage.local.get('shush_saved_tabs');
+  if (!saved) return [];
   try {
-    const saved = JSON.parse(raw);
     const results = await Promise.allSettled(
       saved.map(entry => chrome.tabs.get(entry.tabId))
     );
@@ -200,7 +199,7 @@ window.addEventListener('unload', () => {
     favIconUrl: tab.favIconUrl,
     muted: tab.muted,
   }));
-  localStorage.setItem('shush_saved_tabs', JSON.stringify(toSave));
+  chrome.storage.local.set({ shush_saved_tabs: toSave });
 });
 
 // Load tabs when popup opens
