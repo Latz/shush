@@ -31,3 +31,77 @@ describe('onMessage handler — getShushMutedTabs', () => {
     expect(result).not.toBe(true);
   });
 });
+
+describe('onMessage handler — muteTab input validation', () => {
+  test('ignores message with non-integer tabId (string)', () => {
+    const result = onMessageHandler({ action: 'muteTab', tabId: 'evil', muted: true }, null, vi.fn());
+    expect(result).toBeUndefined();
+    expect(chrome.tabs.update).not.toHaveBeenCalled();
+  });
+
+  test('ignores message with negative tabId', () => {
+    const result = onMessageHandler({ action: 'muteTab', tabId: -1, muted: true }, null, vi.fn());
+    expect(result).toBeUndefined();
+    expect(chrome.tabs.update).not.toHaveBeenCalled();
+  });
+
+  test('ignores message with float tabId', () => {
+    const result = onMessageHandler({ action: 'muteTab', tabId: 1.5, muted: true }, null, vi.fn());
+    expect(result).toBeUndefined();
+    expect(chrome.tabs.update).not.toHaveBeenCalled();
+  });
+
+  test('ignores message with non-boolean muted', () => {
+    const result = onMessageHandler({ action: 'muteTab', tabId: 1, muted: 'yes' }, null, vi.fn());
+    expect(result).toBeUndefined();
+    expect(chrome.tabs.update).not.toHaveBeenCalled();
+  });
+
+  test('accepts valid tabId and boolean muted, returns true for async response', () => {
+    const result = onMessageHandler({ action: 'muteTab', tabId: 1, muted: true }, null, vi.fn());
+    expect(result).toBe(true);
+    expect(chrome.tabs.update).toHaveBeenCalledWith(1, { muted: true });
+  });
+});
+
+describe('onMessage handler — muteTab persistence', () => {
+  test('saves shushMutedTabs to storage after muting', async () => {
+    chrome.tabs.update.mockResolvedValue({ mutedInfo: { muted: true } });
+    onMessageHandler({ action: 'muteTab', tabId: 5, muted: true }, null, vi.fn());
+    await new Promise(r => setTimeout(r, 0));
+    expect(chrome.storage.session.set).toHaveBeenCalledWith(
+      expect.objectContaining({ shushMutedTabs: expect.arrayContaining([5]) })
+    );
+  });
+
+  test('saves shushMutedTabs to storage after unmuting', async () => {
+    const bg = await import('../../background.js');
+    bg.shushMutedTabs.add(5);
+    chrome.tabs.update.mockResolvedValue({ mutedInfo: { muted: false } });
+    onMessageHandler({ action: 'muteTab', tabId: 5, muted: false }, null, vi.fn());
+    await new Promise(r => setTimeout(r, 0));
+    const lastCall = chrome.storage.session.set.mock.calls.at(-1)[0];
+    expect(lastCall.shushMutedTabs).not.toContain(5);
+  });
+});
+
+describe('service worker startup — shushMutedTabs restore', () => {
+  test('populates Set from chrome.storage.session on import', async () => {
+    globalThis.setupChromeMock();
+    chrome.storage.session.get.mockResolvedValue({ shushMutedTabs: [10, 20] });
+    vi.resetModules();
+    const bg = await import('../../background.js');
+    await new Promise(r => setTimeout(r, 0)); // let IIFE resolve
+    expect(bg.shushMutedTabs.has(10)).toBe(true);
+    expect(bg.shushMutedTabs.has(20)).toBe(true);
+  });
+
+  test('leaves Set empty when storage returns no data', async () => {
+    globalThis.setupChromeMock();
+    chrome.storage.session.get.mockResolvedValue({});
+    vi.resetModules();
+    const bg = await import('../../background.js');
+    await new Promise(r => setTimeout(r, 0));
+    expect(bg.shushMutedTabs.size).toBe(0);
+  });
+});

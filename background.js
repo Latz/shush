@@ -71,6 +71,28 @@ function scheduleUpdate() {
   updateTimeout = setTimeout(() => updateAll(), 500);
 }
 
+function handleMuteToggle(tabId) {
+  // Use shushMutedTabs as source of truth: Vivaldi doesn't reliably update mutedInfo
+  const nowMuted = !shushMutedTabs.has(tabId);
+  chrome.tabs.update(tabId, { muted: nowMuted }).catch(() => {}); // tab may have closed
+  injectMediaMute(tabId, nowMuted);
+  // Track tabs muted via context menu so updateAll() keeps them in the menu
+  // (muting makes a tab non-audible, so without tracking it disappears)
+  if (nowMuted) {
+    shushMutedTabs.add(tabId);
+  } else {
+    shushMutedTabs.delete(tabId);
+  }
+  saveShushMutedTabs();
+  // Flip the mute item label immediately; scheduleUpdate() will do the full rebuild
+  chrome.contextMenus.update(`noisy-tab-${tabId}-mute`, {
+    title: nowMuted
+      ? `🔊 ${chrome.i18n.getMessage('menuUnmuteTab')}`
+      : `🔇 ${chrome.i18n.getMessage('menuMuteTab')}`
+  }).catch(() => {}); // item may not exist if menu hasn't been expanded
+  scheduleUpdate();
+}
+
 chrome.contextMenus.onClicked.addListener((info) => {
   if (info.menuItemId === "find-noisy-tabs") {
     scanAndShowResults();
@@ -83,25 +105,7 @@ chrome.contextMenus.onClicked.addListener((info) => {
   } else if (info.menuItemId.endsWith("-mute")) {
     const tabId = Number.parseInt(info.menuItemId.replace("-mute", "").replace("noisy-tab-", ""), 10);
     if (Number.isFinite(tabId) && tabId > 0) {
-      // Use shushMutedTabs as source of truth: Vivaldi doesn't reliably update mutedInfo
-      const nowMuted = !shushMutedTabs.has(tabId);
-      chrome.tabs.update(tabId, { muted: nowMuted }).catch(() => {}); // tab may have closed
-      injectMediaMute(tabId, nowMuted);
-      // Track tabs muted via context menu so updateAll() keeps them in the menu
-      // (muting makes a tab non-audible, so without tracking it disappears)
-      if (nowMuted) {
-        shushMutedTabs.add(tabId);
-      } else {
-        shushMutedTabs.delete(tabId);
-      }
-      saveShushMutedTabs();
-      // Flip the mute item label immediately; scheduleUpdate() will do the full rebuild
-      chrome.contextMenus.update(`noisy-tab-${tabId}-mute`, {
-        title: nowMuted
-          ? `🔊 ${chrome.i18n.getMessage('menuUnmuteTab')}`
-          : `🔇 ${chrome.i18n.getMessage('menuMuteTab')}`
-      }).catch(() => {}); // item may not exist if menu hasn't been expanded
-      scheduleUpdate();
+      handleMuteToggle(tabId);
     }
   }
   // else: click on a noisy-tab-N parent label (current tab or background tab title) — no action
@@ -223,7 +227,7 @@ async function updateAll() {
 function buildNoisyTabsList(noisyTabs, currentActiveTab) {
   const noisyTabsList = [];
   for (const tab of noisyTabs) {
-    if (!tab.url || !tab.url.startsWith('http')) continue;
+    if (!tab.url?.startsWith('http')) continue;
     noisyTabsList.push({
       id: tab.id,
       title: tab.title || chrome.i18n.getMessage('untitled'),
