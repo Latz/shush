@@ -20,20 +20,20 @@ That's it. The 🤫 extension icon appears in your toolbar.
 
 ## 🎛️ Three ways to use it
 
-### 1. 🔢 The badge
-
-The number on the extension icon tells you how many tabs are currently playing audio. It updates automatically whenever a tab starts or stops making noise — no clicking required. If you see a `2`, two tabs are playing something.
-
-### 2. 🪟 The popup
+### 1. 🪟 The popup
 
 Click the extension icon to open the popup. It immediately shows you which background tabs are making noise, along with two buttons per tab:
 
 - **Switch** — jumps to that tab
-- **Mute / Unmute** — silences (or un-silences) the tab without switching to it
+- **Shush / Unshush** — silences (or un-silences) the tab without switching to it
 
 If the current tab is the only one making noise, the popup says so. If everything is quiet, it says that too.
 
-Hit **Refresh** to re-scan if anything changed while the popup was open.
+### 2. ⌨️ Keyboard shortcut
+
+Press **Ctrl+Shift+M** (Windows/Linux) or **Cmd+Shift+M** (Mac) to instantly mute or unmute the tab you're currently on — no popup, no right-click.
+
+You can change the shortcut at `chrome://extensions/shortcuts`.
 
 ### 3. 🖱️ The right-click menu
 
@@ -58,22 +58,18 @@ Any tab where audio is actually coming out — ▶️ YouTube playing, 🎧 Spot
 
 ## 🔑 Permissions
 
-| Permission | Why |
-|---|---|
-| `tabs` | Read tab titles, audio state, and switch/mute tabs |
-| `activeTab` | Identify which tab you're currently on |
-| `windows` | Find the focused window |
-| `contextMenus` | Build the right-click menu |
-| `notifications` | Show a notification when "Find Noisy Tabs" finds nothing |
-| `scripting` | Inject a script into tabs you mute or unmute to silence `<audio>` and `<video>` elements directly, including inside embedded frames (e.g. video players in iframes) — needed for browsers (e.g. Vivaldi) where the standard tab mute API does not silence audio playback |
-| `<all_urls>` (host permission) | Required by the `scripting` API to inject into tabs regardless of which site they're on — the injected script only sets `.muted` on media elements and reads nothing |
+| Permission                     | Why                                                                                                                                                                                                                                                                      |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `tabs`                         | Read tab titles, audio state, and switch/mute tabs                                                                                                                                                                                                                       |
+| `contextMenus`                 | Build the right-click menu                                                                                                                                                                                                                                               |
+| `notifications`                | Show a notification when "Find Noisy Tabs" finds nothing                                                                                                                                                                                                                 |
+| `scripting`                    | Inject a script into tabs you mute or unmute to silence `<audio>` and `<video>` elements directly, including inside embedded frames (e.g. video players in iframes) — needed for browsers (e.g. Vivaldi) where the standard tab mute API does not silence audio playback |
+| `storage`                      | Persist muted-tab state across service worker restarts and popup open/close cycles                                                                                                                                                                                       |
+| `<all_urls>` (host permission) | Required by the `scripting` API to inject into tabs regardless of which site they're on — the injected script only sets `.muted` on media elements and reads nothing                                                                                                     |
 
 ---
 
 ## 🛠️ Troubleshooting
-
-**🔢 Badge shows a number but the popup says "All quiet!"**
-The popup only lists *background* tabs. If the badge shows `1` and you're currently on that tab, the popup correctly tells you the noise is coming from where you already are.
 
 **👻 A tab is making noise but doesn't appear**
 Chrome's `audible` flag only fires when audio is actually outputting sound. If the tab just loaded or is buffering, give it a second and hit Refresh.
