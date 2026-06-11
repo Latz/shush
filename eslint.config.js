@@ -6,7 +6,7 @@ export default [
   {
     languageOptions: {
       ecmaVersion: 2024,
-      globals: { ...globals.browser, ...globals.webextensions, module: 'readonly' },
+      globals: { ...globals.browser, ...globals.webextensions },
     },
     rules: {
       'no-unused-vars': 'warn',

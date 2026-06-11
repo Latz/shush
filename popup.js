@@ -1,6 +1,7 @@
 // Popup script for Shush! extension
 
 let displayedTabs = [];
+const tabDataMap = new Map();
 
 async function checkSessionNonce() {
   if (!chrome.storage?.session) {
@@ -39,6 +40,9 @@ async function loadSavedTabs() {
 
 function renderTabs(noisyTabsList) {
   displayedTabs = noisyTabsList;
+  tabDataMap.clear();
+  noisyTabsList.forEach(tab => { tabDataMap.set(tab.id, tab); });
+
   const content = document.getElementById('content');
   content.innerHTML = '';
   noisyTabsList.forEach(tab => {
@@ -47,12 +51,12 @@ function renderTabs(noisyTabsList) {
 
     const item = document.createElement('div');
     item.className = 'tab-item';
+    item.dataset.tabId = tab.id;
 
     if (tab.favIconUrl) {
       const img = document.createElement('img');
       img.className = 'tab-favicon';
       img.src = tab.favIconUrl;
-      img.addEventListener('error', () => { img.remove(); });
       item.appendChild(img);
     }
 
@@ -68,39 +72,11 @@ function renderTabs(noisyTabsList) {
     const switchBtn = document.createElement('button');
     switchBtn.className = 'switch-btn';
     switchBtn.textContent = chrome.i18n.getMessage('btnSwitch');
-    switchBtn.addEventListener('click', () => {
-      chrome.tabs.update(tab.id, { active: true });
-      chrome.windows.update(tab.windowId, { focused: true });
-      window.close();
-    });
     actions.appendChild(switchBtn);
 
     const muteBtn = document.createElement('button');
     muteBtn.className = tab.muted ? 'unmute-btn' : 'mute-btn';
     muteBtn.textContent = tab.muted ? 'Unshush!' : 'Shush!';
-    muteBtn.addEventListener('click', async () => {
-      const nowMuted = !tab.muted;
-      // Update UI immediately; correct below if background returns a different state
-      tab.muted = nowMuted;
-      muteBtn.textContent = nowMuted ? 'Unshush!' : 'Shush!';
-      muteBtn.className = nowMuted ? 'unmute-btn' : 'mute-btn';
-      try {
-        // Delegate mute to background service worker to avoid popup-context revert
-        const response = await chrome.runtime.sendMessage({ action: 'muteTab', tabId: tab.id, muted: nowMuted });
-        const actuallyMuted = response?.muted ?? nowMuted;
-        if (actuallyMuted !== nowMuted) {
-          tab.muted = actuallyMuted;
-          muteBtn.textContent = actuallyMuted ? 'Unshush!' : 'Shush!';
-          muteBtn.className = actuallyMuted ? 'unmute-btn' : 'mute-btn';
-        }
-      } catch (err) {
-        console.error('Mute failed:', err);
-        // Revert optimistic update on error
-        tab.muted = !nowMuted;
-        muteBtn.textContent = tab.muted ? 'Unshush!' : 'Shush!';
-        muteBtn.className = tab.muted ? 'unmute-btn' : 'mute-btn';
-      }
-    });
     actions.appendChild(muteBtn);
 
     item.appendChild(actions);
@@ -202,5 +178,50 @@ window.addEventListener('unload', () => {
   chrome.storage.local.set({ shush_saved_tabs: toSave });
 });
 
-// Load tabs when popup opens
-document.addEventListener('DOMContentLoaded', loadNoisyTabs);
+document.addEventListener('DOMContentLoaded', () => {
+  const content = document.getElementById('content');
+
+  content.addEventListener('click', async (e) => {
+    const item = e.target.closest('[data-tab-id]');
+    if (!item) return;
+    const tab = tabDataMap.get(Number(item.dataset.tabId));
+    if (!tab) return;
+
+    if (e.target.closest('.switch-btn')) {
+      chrome.tabs.update(tab.id, { active: true });
+      chrome.windows.update(tab.windowId, { focused: true });
+      window.close();
+    } else {
+      const muteBtn = e.target.closest('.mute-btn, .unmute-btn');
+      if (!muteBtn) return;
+      const nowMuted = !tab.muted;
+      // Update UI immediately; correct below if background returns a different state
+      tab.muted = nowMuted;
+      muteBtn.textContent = nowMuted ? 'Unshush!' : 'Shush!';
+      muteBtn.className = nowMuted ? 'unmute-btn' : 'mute-btn';
+      try {
+        // Delegate mute to background service worker to avoid popup-context revert
+        const response = await chrome.runtime.sendMessage({ action: 'muteTab', tabId: tab.id, muted: nowMuted });
+        const actuallyMuted = response?.muted ?? nowMuted;
+        if (actuallyMuted !== nowMuted) {
+          tab.muted = actuallyMuted;
+          muteBtn.textContent = actuallyMuted ? 'Unshush!' : 'Shush!';
+          muteBtn.className = actuallyMuted ? 'unmute-btn' : 'mute-btn';
+        }
+      } catch (err) {
+        console.error('Mute failed:', err);
+        // Revert optimistic update on error
+        tab.muted = !nowMuted;
+        muteBtn.textContent = tab.muted ? 'Unshush!' : 'Shush!';
+        muteBtn.className = tab.muted ? 'unmute-btn' : 'mute-btn';
+      }
+    }
+  });
+
+  // Capture phase: error events don't bubble, so use capture to handle favicon load failures
+  content.addEventListener('error', (e) => {
+    if (e.target.matches('.tab-favicon')) e.target.remove();
+  }, true);
+
+  loadNoisyTabs();
+});

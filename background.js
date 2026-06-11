@@ -3,8 +3,9 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.action === 'muteTab') {
     const { tabId, muted } = message;
     if (!Number.isInteger(tabId) || tabId <= 0 || typeof muted !== 'boolean') return;
-    chrome.tabs.update(tabId, { muted })
-      .then(tab => {
+    (async () => {
+      try {
+        const tab = await chrome.tabs.update(tabId, { muted });
         const actualMuted = tab.mutedInfo?.muted ?? muted;
         injectMediaMute(tabId, actualMuted);
         if (actualMuted) {
@@ -15,8 +16,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         saveShushMutedTabs();
         scheduleUpdate();
         sendResponse({ muted: actualMuted });
-      })
-      .catch(() => sendResponse({ muted }));
+      } catch {
+        sendResponse({ muted });
+      }
+    })();
     return true; // keep channel open for async response
   } else if (message.action === 'getShushMutedTabs') {
     sendResponse([...shushMutedTabs]);
@@ -52,15 +55,14 @@ function injectMediaMute(tabId, muted) {
 const shushMutedTabs = new Set();
 
 function saveShushMutedTabs() {
-  chrome.storage.session?.set({ shushMutedTabs: [...shushMutedTabs] });
+  chrome.storage.local.set({ shush_muted_tabs: [...shushMutedTabs] });
 }
 
 // Restore persisted muted-tab IDs when the service worker restarts
 (async () => {
-  if (!chrome.storage?.session) return;
-  const result = await chrome.storage.session.get('shushMutedTabs');
-  if (Array.isArray(result?.shushMutedTabs)) {
-    result.shushMutedTabs.forEach(id => shushMutedTabs.add(id));
+  const result = await chrome.storage.local.get('shush_muted_tabs');
+  if (Array.isArray(result?.shush_muted_tabs)) {
+    result.shush_muted_tabs.forEach(id => shushMutedTabs.add(id));
   }
 })();
 
@@ -93,14 +95,14 @@ function handleMuteToggle(tabId) {
   scheduleUpdate();
 }
 
-chrome.contextMenus.onClicked.addListener((info) => {
+chrome.contextMenus.onClicked.addListener(async (info) => {
   if (info.menuItemId === "find-noisy-tabs") {
     scanAndShowResults();
   } else if (info.menuItemId.endsWith("-switch")) {
     const tabId = Number.parseInt(info.menuItemId.replace("-switch", "").replace("noisy-tab-", ""), 10);
     if (Number.isFinite(tabId) && tabId > 0) {
-      chrome.tabs.update(tabId, { active: true })
-        .then(tab => chrome.windows.update(tab.windowId, { focused: true }));
+      const tab = await chrome.tabs.update(tabId, { active: true });
+      await chrome.windows.update(tab.windowId, { focused: true });
     }
   } else if (info.menuItemId.endsWith("-mute")) {
     const tabId = Number.parseInt(info.menuItemId.replace("-mute", "").replace("noisy-tab-", ""), 10);
@@ -339,8 +341,4 @@ function showNoisyTabsInMenu(noisyTabsList) {
   });
 }
 
-// Conditional CommonJS export for Jest tests.
-// `typeof module` is undefined in Chrome service workers, so this is a no-op in production.
-if (typeof module !== 'undefined') {
-  module.exports = { buildNoisyTabsList, showNoisyTabsInMenu, scanAndShowResults, updateAll, shushMutedTabs, scheduleUpdate };
-}
+export { buildNoisyTabsList, showNoisyTabsInMenu, scanAndShowResults, updateAll, shushMutedTabs, scheduleUpdate };

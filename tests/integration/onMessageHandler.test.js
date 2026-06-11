@@ -69,8 +69,8 @@ describe('onMessage handler — muteTab persistence', () => {
     chrome.tabs.update.mockResolvedValue({ mutedInfo: { muted: true } });
     onMessageHandler({ action: 'muteTab', tabId: 5, muted: true }, null, vi.fn());
     await new Promise(r => setTimeout(r, 0));
-    expect(chrome.storage.session.set).toHaveBeenCalledWith(
-      expect.objectContaining({ shushMutedTabs: expect.arrayContaining([5]) })
+    expect(chrome.storage.local.set).toHaveBeenCalledWith(
+      expect.objectContaining({ shush_muted_tabs: expect.arrayContaining([5]) })
     );
   });
 
@@ -80,15 +80,15 @@ describe('onMessage handler — muteTab persistence', () => {
     chrome.tabs.update.mockResolvedValue({ mutedInfo: { muted: false } });
     onMessageHandler({ action: 'muteTab', tabId: 5, muted: false }, null, vi.fn());
     await new Promise(r => setTimeout(r, 0));
-    const lastCall = chrome.storage.session.set.mock.calls.at(-1)[0];
-    expect(lastCall.shushMutedTabs).not.toContain(5);
+    const lastCall = chrome.storage.local.set.mock.calls.at(-1)[0];
+    expect(lastCall.shush_muted_tabs).not.toContain(5);
   });
 });
 
 describe('service worker startup — shushMutedTabs restore', () => {
-  test('populates Set from chrome.storage.session on import', async () => {
+  test('populates Set from chrome.storage.local on import', async () => {
     globalThis.setupChromeMock();
-    chrome.storage.session.get.mockResolvedValue({ shushMutedTabs: [10, 20] });
+    chrome.storage.local.get.mockResolvedValue({ shush_muted_tabs: [10, 20] });
     vi.resetModules();
     const bg = await import('../../background.js');
     await new Promise(r => setTimeout(r, 0)); // let IIFE resolve
@@ -98,7 +98,7 @@ describe('service worker startup — shushMutedTabs restore', () => {
 
   test('leaves Set empty when storage returns no data', async () => {
     globalThis.setupChromeMock();
-    chrome.storage.session.get.mockResolvedValue({});
+    chrome.storage.local.get.mockResolvedValue({});
     vi.resetModules();
     const bg = await import('../../background.js');
     await new Promise(r => setTimeout(r, 0));
