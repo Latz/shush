@@ -193,6 +193,53 @@ window.addEventListener('unload', () => {
   chrome.storage.local.set({ shush_saved_tabs: toSave });
 });
 
+/**
+ * Reads the Vivaldi-specific workspace ID off a tab, if present.
+ * Undocumented field (vivExtData); absent entirely on Chrome, so this is a natural no-op there.
+ * Normalizes to Number since Vivaldi has been observed reporting the same ID as either an int or a float.
+ * @param {chrome.tabs.Tab} tab
+ * @returns {number|null}
+ */
+function getVivaldiWorkspaceId(tab) {
+  if (!tab?.vivExtData) return null;
+  try {
+    const id = JSON.parse(tab.vivExtData)?.workspaceId;
+    return id === undefined || id === null ? null : Number(id);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Activates a tab and focuses its window. On Vivaldi, if the tab belongs to a different
+ * Workspace than the one currently shown, the tab becomes active per the API but stays
+ * hidden (Workspaces are a UI-only filter with no extension API to switch) — in that case
+ * also shows a notification explaining why nothing visibly changed.
+ * @param {number} tabId
+ * @param {number} windowId
+ * @returns {Promise<void>}
+ */
+async function switchToTab(tabId, windowId) {
+  const target = await chrome.tabs.get(tabId).catch(() => null);
+  if (target) {
+    const [activeInWindow] = await chrome.tabs.query({ active: true, windowId }).catch(() => []);
+    if (target.vivExtData || activeInWindow?.vivExtData) {
+      const targetWorkspace = getVivaldiWorkspaceId(target);
+      const activeWorkspace = getVivaldiWorkspaceId(activeInWindow);
+      if (targetWorkspace !== activeWorkspace) {
+        chrome.notifications.create({
+          type: 'basic',
+          iconUrl: 'icons/icon48.png',
+          title: "Shush!",
+          message: chrome.i18n.getMessage('tabInOtherWorkspace')
+        });
+      }
+    }
+  }
+  chrome.tabs.update(tabId, { active: true });
+  chrome.windows.update(windowId, { focused: true });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   const content = document.getElementById('content');
 
@@ -203,8 +250,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!tab) return;
 
     if (e.target.closest('.switch-btn')) {
-      chrome.tabs.update(tab.id, { active: true });
-      chrome.windows.update(tab.windowId, { focused: true });
+      await switchToTab(tab.id, tab.windowId);
       window.close();
     } else {
       const muteBtn = e.target.closest('.mute-btn, .unmute-btn');

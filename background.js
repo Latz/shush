@@ -147,14 +147,62 @@ function handleMuteToggle(tabId) {
   scheduleUpdate();
 }
 
+/**
+ * Reads the Vivaldi-specific workspace ID off a tab, if present.
+ * Undocumented field (vivExtData); absent entirely on Chrome, so this is a natural no-op there.
+ * Normalizes to Number since Vivaldi has been observed reporting the same ID as either an int or a float.
+ * @param {chrome.tabs.Tab} tab
+ * @returns {number|null}
+ */
+function getVivaldiWorkspaceId(tab) {
+  if (!tab?.vivExtData) return null;
+  try {
+    const id = JSON.parse(tab.vivExtData)?.workspaceId;
+    return id === undefined || id === null ? null : Number(id);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Activates a tab and focuses its window. On Vivaldi, if the tab belongs to a different
+ * Workspace than the one currently shown, the tab becomes active per the API but stays
+ * hidden (Workspaces are a UI-only filter with no extension API to switch) — in that case
+ * also shows a notification explaining why nothing visibly changed.
+ * @param {number} tabId
+ * @returns {Promise<void>}
+ */
+async function switchToTab(tabId) {
+  const target = await chrome.tabs.get(tabId).catch(() => null);
+  if (target) {
+    const [activeInWindow] = await chrome.tabs.query({ active: true, windowId: target.windowId }).catch(() => []);
+    // vivExtData is Vivaldi-only; its presence on *either* tab means we're on Vivaldi and can
+    // compare workspaces. Tabs in the default/no-name workspace can report a null workspaceId,
+    // so null must be treated as a distinct, comparable state — not "no data, skip the check".
+    if (target.vivExtData || activeInWindow?.vivExtData) {
+      const targetWorkspace = getVivaldiWorkspaceId(target);
+      const activeWorkspace = getVivaldiWorkspaceId(activeInWindow);
+      if (targetWorkspace !== activeWorkspace) {
+        chrome.notifications.create({
+          type: 'basic',
+          iconUrl: 'icons/icon48.png',
+          title: "Shush!",
+          message: chrome.i18n.getMessage('tabInOtherWorkspace')
+        });
+      }
+    }
+  }
+  const tab = await chrome.tabs.update(tabId, { active: true });
+  await chrome.windows.update(tab.windowId, { focused: true });
+}
+
 chrome.contextMenus.onClicked.addListener(async (info) => {
   if (info.menuItemId === "find-noisy-tabs") {
     scanAndShowResults();
   } else if (info.menuItemId.endsWith("-switch")) {
     const tabId = Number.parseInt(info.menuItemId.replace("-switch", "").replace("noisy-tab-", ""), 10);
     if (Number.isFinite(tabId) && tabId > 0) {
-      const tab = await chrome.tabs.update(tabId, { active: true });
-      await chrome.windows.update(tab.windowId, { focused: true });
+      await switchToTab(tabId);
     }
   } else if (info.menuItemId.endsWith("-mute")) {
     const tabId = Number.parseInt(info.menuItemId.replace("-mute", "").replace("noisy-tab-", ""), 10);
@@ -416,4 +464,4 @@ function showNoisyTabsInMenu(noisyTabsList) {
   });
 }
 
-export { buildNoisyTabsList, showNoisyTabsInMenu, scanAndShowResults, updateAll, shushMutedTabs, scheduleUpdate, fetchNoisyData };
+export { buildNoisyTabsList, showNoisyTabsInMenu, scanAndShowResults, updateAll, shushMutedTabs, scheduleUpdate, fetchNoisyData, getVivaldiWorkspaceId };

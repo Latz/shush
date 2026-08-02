@@ -47,4 +47,33 @@ describe('context menu click handler', () => {
     await new Promise(r => setTimeout(r, 0));
     expect(chrome.tabs.query).toHaveBeenCalled();
   });
+
+  test('switch item shows a notification when the tab is in a different Vivaldi workspace', async () => {
+    chrome.tabs.get.mockResolvedValue({
+      id: 5, windowId: 1, vivExtData: JSON.stringify({ workspaceId: 2 }),
+    });
+    chrome.tabs.query.mockResolvedValue([
+      { id: 99, windowId: 1, vivExtData: JSON.stringify({ workspaceId: 1 }) },
+    ]);
+    chrome.tabs.update.mockResolvedValue({ windowId: 1 });
+    getClickHandler()({ menuItemId: 'noisy-tab-5-switch' });
+    await new Promise(r => setTimeout(r, 0));
+    expect(chrome.notifications.create).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'tabInOtherWorkspace' })
+    );
+    expect(chrome.tabs.update).toHaveBeenCalledWith(5, { active: true });
+  });
+
+  test('switch item shows no notification when the tab is in the same Vivaldi workspace', async () => {
+    chrome.tabs.get.mockResolvedValue({
+      id: 5, windowId: 1, vivExtData: JSON.stringify({ workspaceId: 1 }),
+    });
+    chrome.tabs.query.mockResolvedValue([
+      { id: 99, windowId: 1, vivExtData: JSON.stringify({ workspaceId: 1 }) },
+    ]);
+    chrome.tabs.update.mockResolvedValue({ windowId: 1 });
+    getClickHandler()({ menuItemId: 'noisy-tab-5-switch' });
+    await new Promise(r => setTimeout(r, 0));
+    expect(chrome.notifications.create).not.toHaveBeenCalled();
+  });
 });

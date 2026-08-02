@@ -13,5 +13,6 @@
   "menuMuteTab":    { "message": "Mute Tab" },
   "menuUnmuteTab":  { "message": "Unmute Tab" },
   "errorScanTabs":  { "message": "Error scanning tabs. Please try again." },
-  "cmdToggleMute":  { "message": "Mute or unmute the current tab" }
+  "cmdToggleMute":  { "message": "Mute or unmute the current tab" },
+  "tabInOtherWorkspace": { "message": "This tab is in another Vivaldi Workspace — switch workspaces to view it." }
 }

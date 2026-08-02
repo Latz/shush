@@ -87,6 +87,7 @@ describe('loadNoisyTabs', () => {
     const bgTab = { id: 2, windowId: 3, url: 'https://music.com', title: 'Music', favIconUrl: '', mutedInfo: { muted: false } };
     await loadPopup([bgTab]);
     document.querySelector('.switch-btn').click();
+    await new Promise(r => setTimeout(r, 0));
     expect(chrome.tabs.update).toHaveBeenCalledWith(2, { active: true });
     expect(chrome.windows.update).toHaveBeenCalledWith(3, { focused: true });
     expect(globalThis.close).toHaveBeenCalled();

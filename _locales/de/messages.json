@@ -13,5 +13,6 @@
 	"menuMuteTab": { "message": "Tab stumm schalten" },
 	"menuUnmuteTab": { "message": "Tab-Ton einschalten" },
 	"errorScanTabs": { "message": "Fehler beim Scannen der Tabs. Bitte erneut versuchen." },
-	"cmdToggleMute": { "message": "Aktuellen Tab stumm schalten oder Ton einschalten" }
+	"cmdToggleMute": { "message": "Aktuellen Tab stumm schalten oder Ton einschalten" },
+	"tabInOtherWorkspace": { "message": "Dieser Tab befindet sich in einem anderen Vivaldi-Arbeitsbereich — wechsle den Arbeitsbereich, um ihn zu sehen." }
 }
