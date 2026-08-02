@@ -18,6 +18,9 @@ function setupChromeMock() {
       sendMessage: vi.fn().mockResolvedValue([]),
       lastError: null,
     },
+    commands: {
+      onCommand: { addListener: vi.fn() },
+    },
     contextMenus: {
       create: vi.fn().mockImplementation((_props, cb) => { if (cb) cb(); }),
       removeAll: vi.fn().mockImplementation((cb) => { if (cb) cb(); }),
