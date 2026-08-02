@@ -27,15 +27,33 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 });
 
 /**
- * Injects a content script that mutes/unmutes all audio and video elements in a tab.
- * Also installs a MutationObserver when muting so dynamically added media stays muted.
+ * Injects a content script (main world) that mutes/unmutes all audio and video elements in a tab.
+ * While muting, also patches HTMLMediaElement.prototype.muted so the page's own scripts can't
+ * un-mute an existing element, and installs a MutationObserver so newly added media stays muted.
  * @param {number} tabId
  * @param {boolean} muted
  */
 function injectMediaMute(tabId, muted) {
   chrome.scripting.executeScript({
     target: { tabId, allFrames: true },
+    world: 'MAIN', // required so the .muted property patch below applies to the page's own scripts, not just the extension's isolated world
     func: (m) => {
+      // Intercept the page's own writes to .muted so a player that reuses an existing
+      // element (e.g. Spotify/podcast players calling el.muted = false between tracks)
+      // can't un-mute out from under us — closes the gap the MutationObserver below
+      // can't cover, since that only reacts to new elements, not property writes on existing ones.
+      const proto = HTMLMediaElement.prototype;
+      if (!globalThis.__shushMutedDescriptor) {
+        const desc = Object.getOwnPropertyDescriptor(proto, 'muted');
+        globalThis.__shushMutedDescriptor = desc;
+        Object.defineProperty(proto, 'muted', {
+          configurable: true,
+          get() { return desc.get.call(this); },
+          set(v) { desc.set.call(this, globalThis.__shushActive ? true : v); }
+        });
+      }
+      globalThis.__shushActive = m;
+
       document.querySelectorAll('audio, video').forEach(el => {
         el.muted = m;
         if (!m && el.paused && !el.ended) el.play().catch(() => {});
@@ -224,23 +242,17 @@ chrome.tabs.onActivated.addListener(() => {
 });
 
 /**
- * Fetches audible tabs, shush-muted tab details, and the focused active tab in one round-trip.
+ * Fetches all tabs and the focused active tab in two round-trips, then derives the
+ * audible + shush-muted tab list locally (avoids one chrome.tabs.get() per muted tab).
  * Shared by updateAll and scanAndShowResults to avoid duplicate queries.
  * @returns {Promise<{noisyTabs: chrome.tabs.Tab[], currentActiveTab: chrome.tabs.Tab|undefined}>}
  */
 async function fetchNoisyData() {
-  const shushMutedIds = [...shushMutedTabs];
-  const [audibleTabs, shushMutedDetails, [currentActiveTab]] = await Promise.all([
-    chrome.tabs.query({ audible: true }),
-    shushMutedIds.length > 0
-      ? Promise.all(shushMutedIds.map(id => chrome.tabs.get(id).catch(() => null)))
-      : Promise.resolve([]),
+  const [allTabs, [currentActiveTab]] = await Promise.all([
+    chrome.tabs.query({}),
     chrome.tabs.query({ active: true, lastFocusedWindow: true })
   ]);
-  const noisyTabs = [...audibleTabs];
-  for (const t of shushMutedDetails) {
-    if (t && !noisyTabs.some(x => x.id === t.id)) noisyTabs.push(t);
-  }
+  const noisyTabs = allTabs.filter(t => t.audible || shushMutedTabs.has(t.id));
   return { noisyTabs, currentActiveTab };
 }
 

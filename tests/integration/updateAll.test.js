@@ -8,11 +8,11 @@ beforeEach(async () => {
   background = await import('../../background.js');
 });
 
-function mockQueries({ audible = [], activeTab = { id: 1, url: 'https://current.com' } } = {}) {
+function mockQueries({ audible = [], allTabs, activeTab = { id: 1, url: 'https://current.com' } } = {}) {
+  const tabs = allTabs ?? audible.map(t => ({ ...t, audible: true }));
   chrome.tabs.query.mockImplementation((filter) => {
-    if (filter.audible) return Promise.resolve(audible);
     if (filter.active) return Promise.resolve([activeTab]);
-    return Promise.resolve([]);
+    return Promise.resolve(tabs);
   });
 }
 
@@ -43,11 +43,9 @@ describe('updateAll', () => {
   test('includes shush-muted tabs alongside audible tabs', async () => {
     const { updateAll, shushMutedTabs } = background;
     shushMutedTabs.add(77);
-    const bgTab = { id: 5, url: 'https://music.com', title: 'Music' };
-    mockQueries({ audible: [bgTab] });
-    chrome.tabs.get.mockResolvedValue({
-      id: 77, url: 'https://muted.com', title: 'Muted', mutedInfo: { muted: true },
-    });
+    const bgTab = { id: 5, url: 'https://music.com', title: 'Music', audible: true };
+    const mutedTab = { id: 77, url: 'https://muted.com', title: 'Muted', mutedInfo: { muted: true } };
+    mockQueries({ allTabs: [bgTab, mutedTab] });
 
     await updateAll();
 
@@ -58,10 +56,9 @@ describe('updateAll', () => {
 
   test('deduplicates a tab that is both audible and shush-muted', async () => {
     const { updateAll, shushMutedTabs } = background;
-    const tab = { id: 5, url: 'https://music.com', title: 'Music' };
+    const tab = { id: 5, url: 'https://music.com', title: 'Music', audible: true };
     shushMutedTabs.add(5);
-    mockQueries({ audible: [tab] });
-    chrome.tabs.get.mockResolvedValue(tab);
+    mockQueries({ allTabs: [tab] });
 
     await updateAll();
 
@@ -70,11 +67,10 @@ describe('updateAll', () => {
     expect(noisy5Calls).toHaveLength(1);
   });
 
-  test('ignores closed tabs in shushMutedTabs (tabs.get rejects)', async () => {
+  test('ignores tabs in shushMutedTabs that are no longer open', async () => {
     const { updateAll, shushMutedTabs } = background;
     shushMutedTabs.add(999);
-    mockQueries({ audible: [] });
-    chrome.tabs.get.mockRejectedValue(new Error('No tab with id 999'));
+    mockQueries({ allTabs: [] });
 
     await expect(updateAll()).resolves.toBeUndefined();
     const ids = chrome.contextMenus.create.mock.calls.map(c => c[0].id);

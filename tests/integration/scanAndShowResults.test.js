@@ -8,11 +8,11 @@ beforeEach(async () => {
   background = await import('../../background.js');
 });
 
-function mockQueries({ audible = [], activeTab = { id: 1, url: 'https://current.com', title: 'Current' } } = {}) {
+function mockQueries({ audible = [], allTabs, activeTab = { id: 1, url: 'https://current.com', title: 'Current' } } = {}) {
+  const tabs = allTabs ?? audible.map(t => ({ ...t, audible: true }));
   chrome.tabs.query.mockImplementation((filter) => {
-    if (filter.audible) return Promise.resolve(audible);
     if (filter.active) return Promise.resolve([activeTab]);
-    return Promise.resolve([]);
+    return Promise.resolve(tabs);
   });
 }
 
@@ -56,9 +56,8 @@ describe('scanAndShowResults', () => {
   test('includes shush-muted non-audible tab instead of showing all-quiet', async () => {
     const { scanAndShowResults, shushMutedTabs } = background;
     shushMutedTabs.add(99);
-    mockQueries({ audible: [] });
-    chrome.tabs.get.mockResolvedValue({
-      id: 99, url: 'https://muted-tab.com', title: 'Muted Tab', mutedInfo: { muted: true },
+    mockQueries({
+      allTabs: [{ id: 99, url: 'https://muted-tab.com', title: 'Muted Tab', mutedInfo: { muted: true } }],
     });
 
     await scanAndShowResults();
@@ -70,11 +69,10 @@ describe('scanAndShowResults', () => {
     expect(ids).toContain('noisy-tab-99');
   });
 
-  test('handles closed shush-muted tabs gracefully (tabs.get rejects)', async () => {
+  test('ignores a shush-muted tab that is no longer open', async () => {
     const { scanAndShowResults, shushMutedTabs } = background;
     shushMutedTabs.add(999);
-    mockQueries({ audible: [] });
-    chrome.tabs.get.mockRejectedValue(new Error('No tab with id 999'));
+    mockQueries({ allTabs: [] });
 
     await scanAndShowResults();
 
@@ -85,10 +83,9 @@ describe('scanAndShowResults', () => {
 
   test('does not show a tab that is both audible and shush-muted twice', async () => {
     const { scanAndShowResults, shushMutedTabs } = background;
-    const tab = { id: 5, url: 'https://music.com', title: 'Music' };
+    const tab = { id: 5, url: 'https://music.com', title: 'Music', audible: true };
     shushMutedTabs.add(5);
-    mockQueries({ audible: [tab] });
-    chrome.tabs.get.mockResolvedValue(tab);
+    mockQueries({ allTabs: [tab] });
 
     await scanAndShowResults();
 
