@@ -1,6 +1,8 @@
 # Justification for `host_permissions: ["<all_urls>"]`
 
-The extension uses `chrome.scripting.executeScript()` to inject a small muting function directly into the DOM of tabs the user explicitly mutes. This is necessary because Chrome's built-in tab muting API (`chrome.tabs.update({ muted: true })`) does not reliably silence audio playback in all Chromium-based browsers. Specifically, in Vivaldi — a widely used Chromium-based browser — the API call succeeds and sets `mutedInfo.muted = true`, but the audio pipeline is not affected and the tab continues to play sound. The injected script is the only mechanism that actually silences audio in Vivaldi.
+The extension uses `chrome.scripting.executeScript()` to inject a small muting function directly into the DOM of tabs the user has explicitly muted. This is necessary because Chrome's built-in tab muting API (`chrome.tabs.update({ muted: true })`) does not reliably silence audio playback in all Chromium-based browsers. Specifically, in Vivaldi — a widely used Chromium-based browser — the API call succeeds and sets `mutedInfo.muted = true`, but the audio pipeline is not affected and the tab continues to play sound. The injected script is the only mechanism that actually silences audio in Vivaldi.
+
+Because Vivaldi also loses the mute state on page navigation, the extension re-runs the same injection automatically whenever a tab the user has already muted finishes loading a new page or starts playing audio again — this keeps a user's mute choice in effect across navigation without requiring them to re-click Mute on every page load. No tab is ever muted without the user first taking an explicit mute action on it.
 
 ## Why `<all_urls>` is required
 
@@ -8,17 +10,11 @@ The `scripting` API requires a matching host permission for the target tab's URL
 
 ## What the injected script does — and does not do
 
-The injected function is a single line:
-
-```js
-document.querySelectorAll('audio, video').forEach(el => { el.muted = m; });
-```
-
-It sets the `.muted` property on all `<audio>` and `<video>` elements in the page, including inside iframes (`allFrames: true`), to either `true` (mute) or `false` (unmute). It reads no page content, accesses no user data, does not communicate with any server, and returns nothing to the extension. The function is injected once per mute or unmute action and does not persist after execution.
+The injected function sets the `.muted` property on all `<audio>` and `<video>` elements in the page, including inside iframes (`allFrames: true`), to either `true` (mute) or `false` (unmute). When muting, it also installs a `MutationObserver` that keeps newly-added `<audio>`/`<video>` elements muted for as long as the tab stays muted (e.g. a video site that lazy-loads a new player); this observer is disconnected as soon as the tab is unmuted. It reads no page content, accesses no user data, does not communicate with any server, and returns nothing to the extension.
 
 ## When injection occurs
 
-The script is only injected in direct response to an explicit user action — clicking the Mute or Unmute button in the extension popup, or selecting "Mute Tab" / "Unmute Tab" from the right-click context menu. No script is injected automatically on page load, on tab creation, or in the background. There is no persistent content script registered in the manifest.
+The script only ever runs against a tab the user has explicitly muted or unmuted — by clicking the Mute/Unmute button in the extension popup, selecting "Mute Tab"/"Unmute Tab" from the right-click context menu, or using the mute keyboard shortcut. It is re-injected automatically on subsequent page loads or audio-start events for a tab that is already in that muted state, purely to re-apply the user's existing choice after Vivaldi's navigation-triggered mute reset — never to mute a tab the user has not acted on. There is no persistent content script registered in the manifest; the injection itself runs once per invocation (mute action, unmute action, or re-apply-on-navigation), not as a standing script, though the MutationObserver it installs remains active in the page for the duration of the mute.
 
 ## Why a more restricted alternative is not viable
 
@@ -28,4 +24,4 @@ The script is only injected in direct response to an explicit user action — cl
 
 ## Summary
 
-`<all_urls>` is used exclusively to enable `executeScript()` to reach whichever tab the user chooses to mute, regardless of that tab's domain. The injected code is minimal, write-only, triggered only by explicit user action, and collects no data. There is no less-permissive alternative that preserves full functionality across all Chromium-based browsers.
+`<all_urls>` is used exclusively to enable `executeScript()` to reach whichever tab the user chooses to mute, regardless of that tab's domain. The injected code is minimal, write-only, scoped only to tabs the user has explicitly muted (including automatic re-application after navigation, for that same tab, until unmuted), and collects no data. There is no less-permissive alternative that preserves full functionality across all Chromium-based browsers.

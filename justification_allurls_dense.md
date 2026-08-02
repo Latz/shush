@@ -12,4 +12,4 @@
 
 ## What the injected script does
 
-Sets `.muted` on all `<audio>`/`<video>` elements (including iframes). Reads no page content, sends nothing, returns nothing. Injected once per explicit user action (Shush!/Unshush! button or context menu). No persistent content script.
+Sets `.muted` on all `<audio>`/`<video>` elements (including iframes); while muted, a `MutationObserver` also keeps later-added media elements muted until unmute. Reads no page content, sends nothing, returns nothing. Runs only against tabs the user has explicitly muted (Shush!/Unshush! button, context menu, or shortcut) — re-injected on later page loads/audio starts for that same tab to survive Vivaldi's navigation mute-reset, never on a tab the user hasn't acted on. No persistent content script.
