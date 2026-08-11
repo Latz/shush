@@ -55,6 +55,15 @@ describe('loadNoisyTabs', () => {
     expect(document.getElementById('content').innerHTML).toContain('audioCurrentTab');
   });
 
+  test('survives sendMessage resolving undefined (no background listener)', async () => {
+    // sendMessage resolves undefined rather than rejecting when nothing answers, so the
+    // .catch(() => []) fallback does not cover it.
+    chrome.runtime.sendMessage.mockResolvedValue(undefined);
+    const bgTab = { id: 2, url: 'https://music.com', title: 'Music', favIconUrl: '', mutedInfo: { muted: false } };
+    await loadPopup([bgTab]);
+    expect(document.querySelectorAll('.tab-item')).toHaveLength(1);
+  });
+
   test('renders a tab item for each background audible tab', async () => {
     const bgTab = { id: 2, url: 'https://music.com', title: 'Music', favIconUrl: '', mutedInfo: { muted: false } };
     await loadPopup([bgTab]);

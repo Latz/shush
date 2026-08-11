@@ -157,7 +157,9 @@ function scheduleUpdate() {
 }
 
 // Snapshot of the last menu render — used to skip redundant full rebuilds
-let lastMenuSnapshot = '';
+// null, not '': an empty noisy-tab list snapshots to the empty string, so a string sentinel
+// would compare equal to it and suppress the reset to the basic menu on a fresh worker.
+let lastMenuSnapshot = null;
 
 /**
  * Produces a stable string fingerprint of the current noisy-tab list.
@@ -166,7 +168,9 @@ let lastMenuSnapshot = '';
  * @returns {string}
  */
 function menuSnapshot(noisyTabsList) {
-  return JSON.stringify(noisyTabsList.map(t => `${t.id}:${t.muted}:${t.isCurrentTab}`));
+  // join over JSON.stringify: the result is only ever compared to the previous one, so the
+  // serialization round-trip bought nothing. '|' cannot occur in the fields being joined.
+  return noisyTabsList.map(t => `${t.id}:${t.muted}:${t.isCurrentTab}`).join('|');
 }
 
 /**
@@ -196,25 +200,33 @@ async function handleMuteToggle(tabId) {
       : `🔇 ${chrome.i18n.getMessage('menuMuteTab')}`
   }).catch(() => {}); // item may not exist if menu hasn't been expanded
   // Invalidate snapshot so the next updateAll() forces a full rebuild
-  lastMenuSnapshot = '';
+  lastMenuSnapshot = null;
   scheduleUpdate();
 }
+
+// Matches the per-tab action items built by createTabChildItems. [1-9]\d* encodes
+// "positive integer" directly, so no separate range check on the parsed id is needed.
+const TAB_MENU_ITEM_ID = /^noisy-tab-([1-9]\d*)-(switch|mute)$/;
 
 chrome.contextMenus.onClicked.addListener(async (info) => {
   if (info.menuItemId === "find-noisy-tabs") {
     scanAndShowResults();
-  } else if (info.menuItemId.endsWith("-switch")) {
-    const tabId = Number.parseInt(info.menuItemId.replace("-switch", "").replace("noisy-tab-", ""), 10);
-    if (Number.isFinite(tabId) && tabId > 0) {
-      await switchToTab(tabId);
-    }
-  } else if (info.menuItemId.endsWith("-mute")) {
-    const tabId = Number.parseInt(info.menuItemId.replace("-mute", "").replace("noisy-tab-", ""), 10);
-    if (Number.isFinite(tabId) && tabId > 0) {
-      await handleMuteToggle(tabId);
-    }
+    return;
   }
-  // else: click on a noisy-tab-N parent label (current tab or background tab title) — no action
+  // menuItemId is string|number per the API, and only our own string IDs are actionable.
+  if (typeof info.menuItemId !== 'string') return;
+
+  // One anchored match replaces the previous endsWith + double-replace + range-check per action.
+  // The \d+ capture already rules out the non-numeric and negative IDs those checks guarded against.
+  const action = TAB_MENU_ITEM_ID.exec(info.menuItemId);
+  if (!action) return; // click on a noisy-tab-N parent label (current tab or background tab title)
+
+  const tabId = Number(action[1]);
+  if (action[2] === 'switch') {
+    await switchToTab(tabId);
+  } else {
+    await handleMuteToggle(tabId);
+  }
 });
 
 chrome.commands.onCommand.addListener(async (command) => {
@@ -300,23 +312,24 @@ chrome.tabs.onActivated.addListener(() => {
 });
 
 /**
- * Fetches the audible tabs and the focused active tab, then derives the noisy-tab list locally.
- * The full chrome.tabs.query({}) is only issued when something is shush-muted: it is the one way
- * to resolve muted (and therefore no longer audible) tabs without one chrome.tabs.get() per tab,
- * but it serializes every open tab, which is wasted payload on every scheduleUpdate() tick when
- * nothing is muted. Shared by updateAll and scanAndShowResults to avoid duplicate queries.
+ * Fetches the noisy tabs and the focused active tab, then derives the noisy-tab list locally.
+ * Exactly one tab query is issued, chosen up front: the full chrome.tabs.query({}) is the only
+ * way to resolve muted (and therefore no longer audible) tabs without one chrome.tabs.get() per
+ * tab, but it serializes every open tab — wasted payload on every scheduleUpdate() tick when
+ * nothing is muted, where the far smaller audible-only query answers the same question.
+ * Shared by updateAll and scanAndShowResults to avoid duplicate queries.
  * @returns {Promise<{noisyTabs: chrome.tabs.Tab[], currentActiveTab: chrome.tabs.Tab|undefined}>}
  */
 async function fetchNoisyData() {
-  await restored; // shushMutedTabs gates the full-query branch below
-  const [audibleTabs, allTabs, [currentActiveTab]] = await Promise.all([
-    chrome.tabs.query({ audible: true }),
-    shushMutedTabs.size > 0 ? chrome.tabs.query({}) : Promise.resolve(null),
+  await restored; // shushMutedTabs picks the query below
+  const needsAllTabs = shushMutedTabs.size > 0;
+  const [tabs, [currentActiveTab]] = await Promise.all([
+    needsAllTabs ? chrome.tabs.query({}) : chrome.tabs.query({ audible: true }),
     chrome.tabs.query({ active: true, lastFocusedWindow: true })
   ]);
-  const noisyTabs = allTabs
-    ? allTabs.filter(t => t.audible || shushMutedTabs.has(t.id))
-    : audibleTabs;
+  const noisyTabs = needsAllTabs
+    ? tabs.filter(t => t.audible || shushMutedTabs.has(t.id))
+    : tabs;
   return { noisyTabs, currentActiveTab };
 }
 

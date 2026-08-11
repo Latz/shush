@@ -41,6 +41,17 @@ describe('context menu click handler', () => {
     expect(chrome.tabs.update).toHaveBeenCalledWith(7, { muted: false });
   });
 
+  test('ignores a non-string menuItemId instead of throwing', async () => {
+    // chrome types menuItemId as string|number; the old endsWith() chain threw on a number.
+    await expect(getClickHandler()({ menuItemId: 42 })).resolves.not.toThrow();
+    expect(chrome.tabs.update).not.toHaveBeenCalled();
+  });
+
+  test('ignores a click on a tab parent label (no -switch/-mute suffix)', async () => {
+    await getClickHandler()({ menuItemId: 'noisy-tab-7' });
+    expect(chrome.tabs.update).not.toHaveBeenCalled();
+  });
+
   test('find-noisy-tabs item triggers a tab query', async () => {
     chrome.tabs.query.mockResolvedValue([]);
     getClickHandler()({ menuItemId: 'find-noisy-tabs' });

@@ -48,12 +48,43 @@ function loadSavedTabs(savedData, tabById) {
 }
 
 /**
+ * Replaces #content with a single status line.
+ * Built from a text node rather than an innerHTML template so no caller can ever inject markup.
+ * @param {string} text
+ */
+function showMessage(text) {
+  const message = document.createElement('div');
+  message.className = 'no-tabs';
+  message.textContent = text;
+  document.getElementById('content').replaceChildren(message);
+}
+
+/**
+ * Normalizes a chrome.tabs.Tab into the flat shape the popup renders and persists.
+ * Single construction site, so every object in tabDataMap shares one V8 hidden class.
+ * @param {chrome.tabs.Tab} tab
+ * @param {boolean} [muted] - Overrides the tab's own mutedInfo; used for context-menu-muted tabs,
+ *   whose live mutedInfo is unreliable in Vivaldi.
+ * @returns {{id: number, windowId: number, title: string, url: string, favIconUrl: string, muted: boolean}}
+ */
+function toDisplayTab(tab, muted = tab.mutedInfo?.muted || false) {
+  return {
+    id: tab.id,
+    windowId: tab.windowId,
+    title: tab.title || chrome.i18n.getMessage('untitled'),
+    url: tab.url,
+    favIconUrl: tab.favIconUrl || '',
+    muted
+  };
+}
+
+/**
  * Shows the Mute All button when tabDataMap has at least one unmuted entry, hides it otherwise.
  * Also resets its label/disabled state, so a single call after any render is enough.
  */
 function updateMuteAllButton() {
   const btn = document.getElementById('mute-all-btn');
-  const hasUnmuted = [...tabDataMap.values()].some(tab => !tab.muted);
+  const hasUnmuted = tabDataMap.values().some(tab => !tab.muted);
   btn.hidden = !hasUnmuted;
   if (hasUnmuted) {
     btn.disabled = false;
@@ -67,7 +98,7 @@ function updateMuteAllButton() {
  * @returns {Promise<void>}
  */
 async function muteAllVisibleTabs() {
-  const targets = [...tabDataMap.values()].filter(tab => !tab.muted);
+  const targets = tabDataMap.values().filter(tab => !tab.muted).toArray();
   if (targets.length === 0) return;
   // allSettled: one closed/failed tab shouldn't stop the rest from being muted
   await Promise.allSettled(
@@ -86,7 +117,6 @@ function renderTabs(noisyTabsList) {
   noisyTabsList.forEach(tab => { tabDataMap.set(tab.id, tab); });
 
   const content = document.getElementById('content');
-  content.innerHTML = '';
   // Build off-document, then attach once — #content stays in the live tree, so appending each
   // item directly would touch the rendered DOM once per tab instead of once per render.
   const fragment = document.createDocumentFragment();
@@ -127,7 +157,7 @@ function renderTabs(noisyTabsList) {
     item.appendChild(actions);
     fragment.appendChild(item);
   });
-  content.appendChild(fragment);
+  content.replaceChildren(fragment);
 
   updateMuteAllButton();
   saveTabState();
@@ -139,8 +169,7 @@ function renderTabs(noisyTabsList) {
  * @returns {Promise<void>}
  */
 async function loadNoisyTabs() {
-  const content = document.getElementById('content');
-  content.innerHTML = `<div class="no-tabs">${chrome.i18n.getMessage('popupScanning')}</div>`;
+  showMessage(chrome.i18n.getMessage('popupScanning'));
 
   try {
     loadFailed = false;
@@ -161,76 +190,47 @@ async function loadNoisyTabs() {
     const tabById = new Map(allTabs.map(t => [t.id, t]));
     const savedMutedTabs = loadSavedTabs(savedData, tabById);
 
-    const bgMutedTabs = bgMutedIds
+    // ?? []: sendMessage resolves undefined (rather than rejecting) when no listener answers,
+    // so .catch above does not cover that case.
+    const bgMutedTabs = (bgMutedIds ?? [])
       .map(id => tabById.get(id))
       .filter(Boolean);
 
     const activeTabId = currentActiveTab?.id;
+    /** Displayable = a real web page that is not the tab the user is already looking at. */
+    const isDisplayable = tab => tab.id !== activeTabId && tab.url?.startsWith('http');
 
-    // Build the audible list (existing logic)
-    const displayedAudible = [];
+    // One insertion-ordered Map replaces the previous three filter/map passes and the two
+    // intermediate id Sets: the merge is strictly first-wins, which `has` expresses directly.
+    const byId = new Map();
     let totalAudioTabs = 0;
     for (const tab of audibleTabs) {
       if (!tab.url?.startsWith('http')) continue;
       totalAudioTabs++;
-      if (tab.id !== activeTabId) {
-        displayedAudible.push({
-          id: tab.id,
-          windowId: tab.windowId,
-          title: tab.title || chrome.i18n.getMessage('untitled'),
-          url: tab.url,
-          favIconUrl: tab.favIconUrl || '',
-          muted: tab.mutedInfo?.muted || false
-        });
-      }
+      if (isDisplayable(tab)) byId.set(tab.id, toDisplayTab(tab));
+    }
+    for (const tab of savedMutedTabs) {
+      if (isDisplayable(tab) && !byId.has(tab.id)) byId.set(tab.id, toDisplayTab(tab));
+    }
+    for (const tab of bgMutedTabs) {
+      if (isDisplayable(tab) && !byId.has(tab.id)) byId.set(tab.id, toDisplayTab(tab, true));
     }
 
-    // Add saved muted tabs not already in the audible list and not the active tab
-    const audibleIds = new Set(displayedAudible.map(t => t.id));
-    const savedFiltered = savedMutedTabs
-      .filter(tab => !audibleIds.has(tab.id) && tab.id !== activeTabId && tab.url?.startsWith('http'))
-      .map(tab => ({
-        id: tab.id,
-        windowId: tab.windowId,
-        title: tab.title || chrome.i18n.getMessage('untitled'),
-        url: tab.url,
-        favIconUrl: tab.favIconUrl || '',
-        muted: tab.mutedInfo?.muted || false
-      }));
+    const allDisplayedTabs = byId.values().toArray();
 
-    // Add context-menu-muted tabs not already shown and not the active tab
-    const savedIds = new Set(savedFiltered.map(t => t.id));
-    const bgMutedFiltered = bgMutedTabs
-      .filter(tab => !audibleIds.has(tab.id) && !savedIds.has(tab.id) && tab.id !== activeTabId && tab.url?.startsWith('http'))
-      .map(tab => ({
-        id: tab.id,
-        windowId: tab.windowId,
-        title: tab.title || chrome.i18n.getMessage('untitled'),
-        url: tab.url,
-        favIconUrl: tab.favIconUrl || '',
-        muted: true
-      }));
-
-    const allDisplayedTabs = [...displayedAudible, ...savedFiltered, ...bgMutedFiltered];
-
-    // Handle different scenarios
-    if (totalAudioTabs === 0 && allDisplayedTabs.length === 0) {
-      tabDataMap.clear();
-      content.innerHTML = `<div class="no-tabs">${chrome.i18n.getMessage('noAudio')}</div>`;
-      updateMuteAllButton();
-      saveTabState();
-    } else if (allDisplayedTabs.length === 0 && totalAudioTabs > 0) {
-      tabDataMap.clear();
-      content.innerHTML = `<div class="no-tabs">${chrome.i18n.getMessage('audioCurrentTab')}</div>`;
-      updateMuteAllButton();
-      saveTabState();
-    } else {
+    if (allDisplayedTabs.length > 0) {
       renderTabs(allDisplayedTabs);
+      return;
     }
+    // Nothing to list: distinguish "no audio anywhere" from "audio, but only where you already are"
+    tabDataMap.clear();
+    showMessage(chrome.i18n.getMessage(totalAudioTabs === 0 ? 'noAudio' : 'audioCurrentTab'));
+    updateMuteAllButton();
+    saveTabState();
   } catch (error) {
     console.error('Error loading noisy tabs:', error);
     loadFailed = true;
-    content.innerHTML = `<div class="no-tabs">${chrome.i18n.getMessage('errorLoadTabs')}</div>`;
+    showMessage(chrome.i18n.getMessage('errorLoadTabs'));
     tabDataMap.clear();
     updateMuteAllButton();
   }
@@ -246,12 +246,12 @@ function saveTabState() {
   // A failed load empties tabDataMap without that reflecting reality — writing then would
   // discard the previous session's list over a transient error.
   if (loadFailed) return Promise.resolve();
-  const toSave = [...tabDataMap.values()].map(tab => ({
+  const toSave = tabDataMap.values().map(tab => ({
     tabId: tab.id,
     title: tab.title,
     favIconUrl: tab.favIconUrl,
     muted: tab.muted,
-  }));
+  })).toArray();
   return chrome.storage.local.set({ shush_saved_tabs: toSave });
 }
 

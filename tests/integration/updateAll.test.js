@@ -29,6 +29,20 @@ describe('updateAll', () => {
     expect(ids).not.toContain('noisy-tab-1');
   });
 
+  test('still resets the menu when the empty list snapshots to the empty string', async () => {
+    // The empty-list snapshot is '', so the "nothing rendered yet" sentinel must not be a
+    // string, or the first updateAll() on a quiet browser would be skipped as a no-op.
+    const { updateAll } = background;
+    mockQueries({ audible: [] });
+
+    await updateAll();
+    expect(chrome.contextMenus.removeAll).toHaveBeenCalledTimes(1);
+
+    // Second pass with the same (empty) state must still be skipped — the dedupe itself works.
+    await updateAll();
+    expect(chrome.contextMenus.removeAll).toHaveBeenCalledTimes(1);
+  });
+
   test('populates menu with audible background tabs', async () => {
     const { updateAll } = background;
     const bgTab = { id: 5, url: 'https://music.com', title: 'Music' };
