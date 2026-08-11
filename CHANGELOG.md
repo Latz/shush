@@ -16,6 +16,9 @@ All notable changes to Shush! are documented in this file.
 
 ### Minor
 
+- The popup's scrollbar is now slim and reserves its space, so a long list of noisy tabs no longer shifts sideways the moment the scrollbar appears.
+- Button labels now use a browser-computed contrast colour, keeping them legible on every button background.
+- Popup stylesheet modernised to current web standards (single set of colour tokens covering both themes, logical properties, balanced heading wrapping). No visual change intended.
 - The "Find Noisy Tabs" context menu is now updated in place when a tab is muted or you switch tabs, instead of being torn down and rebuilt each time. It is still rebuilt when tabs start or stop making noise, so the menu order always follows the tab order.
 - The popup builds its tab list in one go before showing it, rather than adding entries one by one.
 - The injected mute script now only inspects newly added DOM nodes instead of re-scanning the whole page on every mutation. Removes noticeable slowdown on busy pages (live chat, infinite scroll) while a tab is muted.
