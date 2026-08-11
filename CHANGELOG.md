@@ -4,6 +4,10 @@ All notable changes to Shush! are documented in this file.
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-11
+
+First release.
+
 ### Major
 
 - **[Major]** "Mute All" button in the popup — shush-mutes every listed background tab in one click. Hidden when nothing is unmuted, disabled while the batch runs, and one failing tab no longer stops the rest.
