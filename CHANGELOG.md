@@ -16,6 +16,7 @@ All notable changes to Shush! are documented in this file.
 
 ### Minor
 
+- The injected muting script is now covered by tests, including that a page cannot un-mute itself and that media added after muting stays silent.
 - Tab icons in the popup now come from the browser's own icon cache instead of being fetched from each site, so opening the popup no longer tells those sites anything.
 - The popup heading is now a proper top-level heading, tab buttons carry descriptive labels for screen readers, and the popup reports the language it is actually displaying.
 - Context menu rebuilds can no longer overlap each other.

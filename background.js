@@ -1,4 +1,5 @@
 import { switchToTab } from './shared/vivaldi.js';
+import { applyMediaMute } from './shared/media-mute.js';
 
 // Handle mute requests from popup (avoids popup-context revert behaviour)
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -54,54 +55,12 @@ function injectMediaMute(tabId, muted) {
   lastInjectAt.set(tabId, Date.now());
   chrome.scripting.executeScript({
     target: { tabId, allFrames: true },
-    world: 'MAIN', // required so the .muted property patch below applies to the page's own scripts, not just the extension's isolated world
-    func: (m) => {
-      // Intercept the page's own writes to .muted so a player that reuses an existing
-      // element (e.g. Spotify/podcast players calling el.muted = false between tracks)
-      // can't un-mute out from under us — closes the gap the MutationObserver below
-      // can't cover, since that only reacts to new elements, not property writes on existing ones.
-      const proto = HTMLMediaElement.prototype;
-      if (!globalThis.__shushMutedDescriptor) {
-        const desc = Object.getOwnPropertyDescriptor(proto, 'muted');
-        globalThis.__shushMutedDescriptor = desc;
-        Object.defineProperty(proto, 'muted', {
-          configurable: true,
-          get() { return desc.get.call(this); },
-          set(v) { desc.set.call(this, globalThis.__shushActive ? true : v); }
-        });
-      }
-      globalThis.__shushActive = m;
-
-      document.querySelectorAll('audio, video').forEach(el => {
-        el.muted = m;
-        if (!m && el.paused && !el.ended) el.play().catch(() => {});
-      });
-      if (m) {
-        if (!globalThis.__shushObserver) {
-          // Only inspect nodes that were actually added, rather than re-scanning the whole
-          // document per mutation batch: on churny pages (live chat, infinite scroll) the vast
-          // majority of batches contain no media at all, and a full querySelectorAll per batch
-          // is page-visible jank. Existing elements are already covered by the .muted patch above,
-          // so newly inserted nodes are the only thing this observer needs to catch.
-          globalThis.__shushObserver = new MutationObserver((mutations) => {
-            for (const mutation of mutations) {
-              for (const node of mutation.addedNodes) {
-                if (node.nodeType !== Node.ELEMENT_NODE) continue;
-                if (node.matches('audio, video')) {
-                  node.muted = true;
-                } else {
-                  node.querySelectorAll('audio, video').forEach(el => { el.muted = true; });
-                }
-              }
-            }
-          });
-          globalThis.__shushObserver.observe(document.documentElement, { childList: true, subtree: true });
-        }
-      } else if (globalThis.__shushObserver) {
-        globalThis.__shushObserver.disconnect();
-        globalThis.__shushObserver = null;
-      }
-    },
+    // MAIN world so the .muted property patch inside applyMediaMute applies to the page's own
+    // scripts, not just the extension's isolated world.
+    world: 'MAIN',
+    // Serialized to source and re-evaluated in the page, so applyMediaMute must stay
+    // self-contained — see the note at the top of shared/media-mute.js.
+    func: applyMediaMute,
     args: [muted]
   }).catch(() => {}); // silently ignore restricted pages (chrome://, PDFs, etc.)
 }

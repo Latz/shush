@@ -29,5 +29,11 @@ export default [
       },
     },
   },
-  { ignores: ['node_modules/', 'coverage/', 'Development/', '.scannerwork/'] },
+  {
+    ignores: [
+      'node_modules/', 'coverage/', 'Development/', '.scannerwork/',
+      '.worktrees/', // separate git worktrees carrying their own copy of the source
+      'bin/',        // bin/check.js is a shell script, not JavaScript
+    ],
+  },
 ];
