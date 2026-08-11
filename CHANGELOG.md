@@ -8,7 +8,7 @@ All notable changes to Shush! are documented in this file.
 
 - **[Major]** "Mute All" button in the popup — shush-mutes every listed background tab in one click. Hidden when nothing is unmuted, disabled while the batch runs, and one failing tab no longer stops the rest.
 - **[Major]** Keyboard shortcut `Ctrl+Shift+M` to mute/unmute the current tab without opening the popup.
-- **[Major]** Full localisation in six languages (English, German, French, Spanish, Japanese, Chinese) — popup, context menu, notifications and the extension description.
+- **[Major]** Full localisation in English and German — popup, context menu, notifications and the extension description.
 - **[Major]** Automatic dark mode following the system theme.
 - **[Major]** Media-element muting via injected content script, so muting also works in Vivaldi where the tab-level mute is unreliable. Newly added audio/video elements stay muted, and the page's own scripts can no longer un-mute a tab behind your back.
 - **[Major]** Popup listing every noisy tab with its favicon and title, plus per-tab "Switch" and "Shush!"/"Unshush!" buttons.
@@ -50,6 +50,7 @@ All notable changes to Shush! are documented in this file.
 
 ### Deletions
 
+- Removed the French, Spanish, Japanese and Chinese translations. English and German remain; other locales fall back to English.
 - Removed the action-icon badge.
 - Removed the "Close Menu" entry from the context menu.
 - Removed the "Refresh" button from the popup — the list now updates on its own.
