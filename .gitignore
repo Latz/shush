@@ -36,3 +36,16 @@ enhancements.md
 
 # Git worktrees
 .worktrees/
+
+# Editor / tooling scratch
+DEADJOE
+*~
+.#*
+
+# Local analysis output
+.scannerwork/
+reports/
+sonar-issues.md
+*_review*.md
+code_review*.md
+performance_review*.md

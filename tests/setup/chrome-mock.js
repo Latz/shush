@@ -16,6 +16,7 @@ function setupChromeMock() {
       onInstalled: { addListener: vi.fn() },
       onStartup: { addListener: vi.fn() },
       sendMessage: vi.fn().mockResolvedValue([]),
+      getURL: vi.fn().mockImplementation((path) => `chrome-extension://shush-test${path}`),
       lastError: null,
     },
     commands: {

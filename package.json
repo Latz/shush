@@ -1,12 +1,12 @@
 {
   "name": "shush",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "scripts": {
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "lint": "eslint background.js popup.js",
-    "lint:json": "eslint --format json background.js popup.js"
+    "lint": "eslint *.js shared/*.js tests/",
+    "lint:json": "eslint --format json *.js shared/*.js tests/"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

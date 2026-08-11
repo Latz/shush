@@ -132,7 +132,10 @@ const shushMutedTabs = new Set();
  * @returns {Promise<void>}
  */
 function saveShushMutedTabs() {
-  return chrome.storage.local.set({ shush_muted_tabs: [...shushMutedTabs] });
+  // Callers are listeners that have nothing useful to do about a failed write, so the
+  // rejection is logged here rather than left to become an unhandled rejection at each site.
+  return chrome.storage.local.set({ shush_muted_tabs: [...shushMutedTabs] })
+    .catch(error => { console.error('Failed to persist muted tabs:', error); });
 }
 
 // Restore persisted muted-tab IDs when the service worker restarts.
@@ -366,13 +369,34 @@ function canDiffMenu(noisyTabsList) {
     && renderedTabs.every((tab, i) => tab.id === noisyTabsList[i].id);
 }
 
+// Serializes every menu mutation. updateAll and scanAndShowResults are both async and both
+// rebuild the menu, and nothing stops a debounced update from overlapping a user-triggered
+// scan — interleaving two removeAll + rebuild sequences leaves renderedTabs describing a
+// menu that no longer matches, which then feeds a bad applyMenuDiff.
+let menuWriteQueue = Promise.resolve();
+
+/**
+ * Runs `task` after any menu write already in flight has settled.
+ * @param {() => Promise<void>} task
+ * @returns {Promise<void>}
+ */
+function queueMenuWrite(task) {
+  menuWriteQueue = menuWriteQueue.then(task, task);
+  return menuWriteQueue;
+}
+
 /**
  * Updates the context menu to reflect the current set of noisy tabs.
  * Skips all work if the tab list and mute states match the previous render; updates items in
  * place when only labels changed; falls back to a full rebuild when tabs were added or removed.
  * @returns {Promise<void>}
  */
-async function updateAll() {
+function updateAll() {
+  return queueMenuWrite(updateAllNow);
+}
+
+/** The body of updateAll; always run through queueMenuWrite, never called directly. */
+async function updateAllNow() {
   try {
     const { noisyTabs, currentActiveTab } = await fetchNoisyData();
     const noisyTabsList = buildNoisyTabsList(noisyTabs, currentActiveTab);
@@ -434,7 +458,12 @@ function buildNoisyTabsList(noisyTabs, currentActiveTab) {
  * Shows a notification when there is nothing to act on, otherwise populates the menu.
  * @returns {Promise<void>}
  */
-async function scanAndShowResults() {
+function scanAndShowResults() {
+  return queueMenuWrite(scanAndShowResultsNow);
+}
+
+/** The body of scanAndShowResults; always run through queueMenuWrite. */
+async function scanAndShowResultsNow() {
   try {
     const { noisyTabs, currentActiveTab } = await fetchNoisyData();
     const noisyTabsList = buildNoisyTabsList(noisyTabs, currentActiveTab);

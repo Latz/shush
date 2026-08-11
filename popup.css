@@ -33,7 +33,10 @@ body {
 	100% { color: var(--heading); }
 }
 
-h3 {
+h1 {
+	/* Was an h3 for its default size; promoted to h1 so the popup has a proper heading
+	   hierarchy, with the size pinned here so nothing moves visually. */
+	font-size: 1.17em;
 	margin-block: 0 10px;
 	color: var(--heading);
 	text-wrap: balance;

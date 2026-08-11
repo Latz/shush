@@ -78,6 +78,43 @@ function toDisplayTab(tab, muted = tab.mutedInfo?.muted || false) {
   };
 }
 
+/** Strips a leading notification count, e.g. "(3) Now Playing" → "Now Playing". */
+function cleanTabTitle(title) {
+  return title.replace(/^\(\d+\)\s*/, '');
+}
+
+/**
+ * Applies the muted/unmuted appearance to a tab row's mute button.
+ * Single place that knows the label, class and accessible name belong together — the click
+ * handler flips this three times and previously updated only the first two.
+ * @param {HTMLButtonElement} btn
+ * @param {boolean} muted
+ * @param {string} title - Tab title, already stripped of any notification count.
+ */
+function setMuteButtonState(btn, muted, title) {
+  // "Shush!"/"Unshush!" are the product's own wording and stay untranslated by design;
+  // aria-label carries the localized meaning for assistive tech.
+  btn.textContent = muted ? 'Unshush!' : 'Shush!';
+  btn.className = muted ? 'unmute-btn' : 'mute-btn';
+  btn.setAttribute('aria-label',
+    `${chrome.i18n.getMessage(muted ? 'menuUnmuteTab' : 'menuMuteTab')}: ${title}`);
+}
+
+/**
+ * Resolves a tab's favicon through Chrome's local favicon cache.
+ * Preferred over the tab's own favIconUrl, which points at the site itself — loading that
+ * would tell every listed site, on every popup open, that the user is running Shush!.
+ * @param {string} pageUrl
+ * @returns {string} Extension-local favicon URL, or '' when one can't be built.
+ */
+function faviconUrl(pageUrl) {
+  if (!pageUrl) return '';
+  const url = new URL(chrome.runtime.getURL('/_favicon/'));
+  url.searchParams.set('pageUrl', pageUrl);
+  url.searchParams.set('size', '32');
+  return url.toString();
+}
+
 /**
  * Shows the Mute All button when tabDataMap has at least one unmuted entry, hides it otherwise.
  * Also resets its label/disabled state, so a single call after any render is enough.
@@ -121,17 +158,21 @@ function renderTabs(noisyTabsList) {
   // item directly would touch the rendered DOM once per tab instead of once per render.
   const fragment = document.createDocumentFragment();
   noisyTabsList.forEach(tab => {
-    const cleanTitle = tab.title.replace(/^\(\d+\)\s*/, '');
+    const cleanTitle = cleanTabTitle(tab.title);
     const tabTitle = cleanTitle.length > 30 ? cleanTitle.substring(0, 27) + '...' : cleanTitle;
 
     const item = document.createElement('div');
     item.className = 'tab-item';
     item.dataset.tabId = tab.id;
 
-    if (tab.favIconUrl) {
+    // Still gated on the tab actually having a favicon, so tabs without one keep rendering
+    // without an image rather than picking up Chrome's placeholder globe.
+    const faviconSrc = tab.favIconUrl ? faviconUrl(tab.url) : '';
+    if (faviconSrc) {
       const img = document.createElement('img');
       img.className = 'tab-favicon';
-      img.src = tab.favIconUrl;
+      img.alt = '';
+      img.src = faviconSrc;
       item.appendChild(img);
     }
 
@@ -147,11 +188,12 @@ function renderTabs(noisyTabsList) {
     const switchBtn = document.createElement('button');
     switchBtn.className = 'switch-btn';
     switchBtn.textContent = chrome.i18n.getMessage('btnSwitch');
+    // The visible label is the same on every row, so name the target tab for screen readers.
+    switchBtn.setAttribute('aria-label', `${chrome.i18n.getMessage('btnSwitch')}: ${cleanTitle}`);
     actions.appendChild(switchBtn);
 
     const muteBtn = document.createElement('button');
-    muteBtn.className = tab.muted ? 'unmute-btn' : 'mute-btn';
-    muteBtn.textContent = tab.muted ? 'Unshush!' : 'Shush!';
+    setMuteButtonState(muteBtn, tab.muted, cleanTitle);
     actions.appendChild(muteBtn);
 
     item.appendChild(actions);
@@ -261,6 +303,10 @@ function saveTabState() {
 window.addEventListener('pagehide', () => { saveTabState(); });
 
 document.addEventListener('DOMContentLoaded', () => {
+  // popup.html can only carry one static lang; correct it to the UI locale so screen
+  // readers pronounce the localized strings properly.
+  document.documentElement.lang = chrome.i18n.getUILanguage?.() ?? 'en';
+
   const content = document.getElementById('content');
   const muteAllBtn = document.getElementById('mute-all-btn');
 
@@ -282,26 +328,24 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
       const muteBtn = e.target.closest('.mute-btn, .unmute-btn');
       if (!muteBtn) return;
+      const title = cleanTabTitle(tab.title);
       const nowMuted = !tab.muted;
       // Update UI immediately; correct below if background returns a different state
       tab.muted = nowMuted;
-      muteBtn.textContent = nowMuted ? 'Unshush!' : 'Shush!';
-      muteBtn.className = nowMuted ? 'unmute-btn' : 'mute-btn';
+      setMuteButtonState(muteBtn, nowMuted, title);
       try {
         // Delegate mute to background service worker to avoid popup-context revert
         const response = await chrome.runtime.sendMessage({ action: 'muteTab', tabId: tab.id, muted: nowMuted });
         const actuallyMuted = response?.muted ?? nowMuted;
         if (actuallyMuted !== nowMuted) {
           tab.muted = actuallyMuted;
-          muteBtn.textContent = actuallyMuted ? 'Unshush!' : 'Shush!';
-          muteBtn.className = actuallyMuted ? 'unmute-btn' : 'mute-btn';
+          setMuteButtonState(muteBtn, actuallyMuted, title);
         }
       } catch (err) {
         console.error('Mute failed:', err);
         // Revert optimistic update on error
         tab.muted = !nowMuted;
-        muteBtn.textContent = tab.muted ? 'Unshush!' : 'Shush!';
-        muteBtn.className = tab.muted ? 'unmute-btn' : 'mute-btn';
+        setMuteButtonState(muteBtn, tab.muted, title);
       }
       // Persist the settled state now — the popup can be dismissed at any moment
       saveTabState();

@@ -10,7 +10,7 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['lcov', 'text'],
       reportsDirectory: 'coverage',
-      include: ['background.js', 'popup.js'],
+      include: ['background.js', 'popup.js', 'shared/*.js'],
     },
   },
 });

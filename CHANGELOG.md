@@ -16,6 +16,10 @@ All notable changes to Shush! are documented in this file.
 
 ### Minor
 
+- Tab icons in the popup now come from the browser's own icon cache instead of being fetched from each site, so opening the popup no longer tells those sites anything.
+- The popup heading is now a proper top-level heading, tab buttons carry descriptive labels for screen readers, and the popup reports the language it is actually displaying.
+- Context menu rebuilds can no longer overlap each other.
+- A failure to save the muted-tab list is now reported instead of passing silently.
 - Fixed the context menu muting a tab again when it offered to unmute it. A tab muted with the browser's own tab mute was labelled "Unmute Tab" but needed two clicks to actually unmute.
 - Fixed a tab entry lingering in the context menu after it stopped playing audio, when the menu had last been built by "Find Noisy Tabs".
 - Muting no longer stops working for the rest of the browser session if the saved list of muted tabs cannot be read at startup.
