@@ -4,6 +4,8 @@
   "noAudio":        { "message": "No tabs are playing audio. All quiet!" },
   "audioCurrentTab":{ "message": "All audio is coming from the current tab." },
   "btnSwitch":      { "message": "Switch" },
+  "btnMuteAll":     { "message": "Mute All" },
+  "btnMuting":      { "message": "Muting…" },
   "untitled":       { "message": "Untitled" },
   "errorLoadTabs":  { "message": "Error loading tabs. Please try again." },
   "menuFindNoisyTabs": { "message": "Find Noisy Tabs" },

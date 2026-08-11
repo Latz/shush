@@ -110,6 +110,21 @@ button {
 	width: 68px;
 }
 
+.mute-all-btn {
+	display: block;
+	width: 100%;
+	background: var(--btn-mute);
+	color: white;
+	padding: 6px 8px;
+	margin-bottom: 10px;
+	font-size: 13px;
+}
+
+.mute-all-btn:disabled {
+	opacity: 0.6;
+	cursor: default;
+}
+
 .no-tabs {
 	text-align: center;
 	color: var(--muted-text);

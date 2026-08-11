@@ -4,12 +4,28 @@
 const DEFAULT_ACTIVE_TAB = { id: 1, url: 'https://current.com', title: 'Current' };
 
 beforeEach(() => {
-  document.body.innerHTML = '<div id="content"></div>';
+  document.body.innerHTML = '<button id="mute-all-btn" class="mute-all-btn" hidden></button><div id="content"></div>';
   globalThis.setupChromeMock();
   // window.close is called by the switch button handler
   globalThis.close = vi.fn();
   vi.resetModules();
 });
+
+// Each test imports a fresh popup.js module instance, but this file's jsdom `document` is
+// shared across all tests — dispatching a real 'DOMContentLoaded' event would re-trigger every
+// prior test's still-registered listener too. Capture just this import's handler and invoke it
+// directly instead, so nothing accumulates on `document` across tests.
+async function importPopupAndInit() {
+  let handler;
+  const originalAddEventListener = document.addEventListener.bind(document);
+  document.addEventListener = (type, fn, ...rest) => {
+    if (type === 'DOMContentLoaded') { handler = fn; return; }
+    return originalAddEventListener(type, fn, ...rest);
+  };
+  await import('../../popup.js');
+  document.addEventListener = originalAddEventListener;
+  handler();
+}
 
 async function loadPopup(audibleTabs = [], activeTab = DEFAULT_ACTIVE_TAB, allTabs = []) {
   chrome.tabs.query.mockImplementation((filter) => {
@@ -17,8 +33,7 @@ async function loadPopup(audibleTabs = [], activeTab = DEFAULT_ACTIVE_TAB, allTa
     if (filter.active) return Promise.resolve([activeTab]);
     return Promise.resolve(allTabs); // chrome.tabs.query({}) — all open tabs
   });
-  await import('../../popup.js');
-  document.dispatchEvent(new Event('DOMContentLoaded'));
+  await importPopupAndInit();
   // Wait for async loadNoisyTabs to complete
   await new Promise(r => setTimeout(r, 50));
 }
@@ -77,8 +92,7 @@ describe('loadNoisyTabs', () => {
 
   test('shows error message when chrome.tabs.query rejects', async () => {
     chrome.tabs.query.mockRejectedValue(new Error('API error'));
-    await import('../../popup.js');
-    document.dispatchEvent(new Event('DOMContentLoaded'));
+    await importPopupAndInit();
     await new Promise(r => setTimeout(r, 50));
     expect(document.getElementById('content').innerHTML).toContain('errorLoadTabs');
   });
@@ -182,6 +196,70 @@ describe('loadNoisyTabs', () => {
     await loadPopup([], DEFAULT_ACTIVE_TAB, [bgMutedTab]);
     // Should show as muted (unmute-btn) even though mutedInfo.muted is false
     expect(document.querySelectorAll('.unmute-btn').length).toBe(1);
+  });
+});
+
+describe('Mute All', () => {
+  test('button is hidden when there are no noisy tabs', async () => {
+    await loadPopup([]);
+    expect(document.getElementById('mute-all-btn').hidden).toBe(true);
+  });
+
+  test('button is visible when there is at least one unmuted background tab', async () => {
+    const bgTab = { id: 2, url: 'https://music.com', title: 'Music', favIconUrl: '', mutedInfo: { muted: false } };
+    await loadPopup([bgTab]);
+    expect(document.getElementById('mute-all-btn').hidden).toBe(false);
+  });
+
+  test('button is hidden when all background tabs are already muted', async () => {
+    const mutedTab = { id: 2, url: 'https://music.com', title: 'Music', favIconUrl: '', mutedInfo: { muted: true } };
+    await loadPopup([mutedTab]);
+    expect(document.getElementById('mute-all-btn').hidden).toBe(true);
+  });
+
+  test('clicking sends one muteTab message per unmuted tab, none for already-muted tabs', async () => {
+    const unmuted = { id: 2, url: 'https://music.com', title: 'Music', favIconUrl: '', mutedInfo: { muted: false } };
+    const muted = { id: 3, url: 'https://video.com', title: 'Video', favIconUrl: '', mutedInfo: { muted: true } };
+    chrome.runtime.sendMessage = vi.fn().mockImplementation((msg) => {
+      if (msg.action === 'getShushMutedTabs') return Promise.resolve([]);
+      return Promise.resolve({ muted: true });
+    });
+    await loadPopup([unmuted, muted]);
+    document.getElementById('mute-all-btn').click();
+    await new Promise(r => setTimeout(r, 50));
+    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'muteTab', tabId: 2, muted: true })
+    );
+    expect(chrome.runtime.sendMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'muteTab', tabId: 3 })
+    );
+  });
+
+  test('after clicking, the list re-renders with those tabs muted and the button hides again', async () => {
+    const bgTab = { id: 2, windowId: 1, url: 'https://music.com', title: 'Music', favIconUrl: '', mutedInfo: { muted: false } };
+    let shushMuted = [];
+    chrome.runtime.sendMessage = vi.fn().mockImplementation((msg) => {
+      if (msg.action === 'getShushMutedTabs') return Promise.resolve(shushMuted);
+      if (msg.action === 'muteTab') {
+        shushMuted = [...shushMuted, msg.tabId];
+        return Promise.resolve({ muted: true });
+      }
+      return Promise.resolve({});
+    });
+    // Once a tab is shush-muted it stops being audible (real browser behavior) —
+    // simulate that so the reload after Mute All reflects the new state.
+    chrome.tabs.query.mockImplementation((filter) => {
+      if (filter.audible) return Promise.resolve(shushMuted.includes(bgTab.id) ? [] : [bgTab]);
+      if (filter.active) return Promise.resolve([DEFAULT_ACTIVE_TAB]);
+      return Promise.resolve([bgTab]);
+    });
+    await importPopupAndInit();
+    await new Promise(r => setTimeout(r, 50));
+
+    document.getElementById('mute-all-btn').click();
+    await new Promise(r => setTimeout(r, 50));
+    expect(document.querySelectorAll('.unmute-btn').length).toBe(1);
+    expect(document.getElementById('mute-all-btn').hidden).toBe(true);
   });
 });
 

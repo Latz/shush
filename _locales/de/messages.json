@@ -4,6 +4,8 @@
 	"noAudio": { "message": "Keine Tabs spielen Audio ab. Alles ruhig!" },
 	"audioCurrentTab": { "message": "Das gesamte Audio kommt vom aktuellen Tab." },
 	"btnSwitch": { "message": "Wechseln" },
+	"btnMuteAll": { "message": "Alle stumm schalten" },
+	"btnMuting": { "message": "Wird stummgeschaltet…" },
 	"untitled": { "message": "Ohne Titel" },
 	"errorLoadTabs": { "message": "Fehler beim Laden der Tabs. Bitte erneut versuchen." },
 	"menuFindNoisyTabs": { "message": "Laute Tabs finden" },

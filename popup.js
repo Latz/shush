@@ -42,6 +42,35 @@ function loadSavedTabs(savedData, tabById) {
 }
 
 /**
+ * Shows the Mute All button when tabDataMap has at least one unmuted entry, hides it otherwise.
+ * Also resets its label/disabled state, so a single call after any render is enough.
+ */
+function updateMuteAllButton() {
+  const btn = document.getElementById('mute-all-btn');
+  const hasUnmuted = [...tabDataMap.values()].some(tab => !tab.muted);
+  btn.hidden = !hasUnmuted;
+  if (hasUnmuted) {
+    btn.disabled = false;
+    btn.textContent = chrome.i18n.getMessage('btnMuteAll');
+  }
+}
+
+/**
+ * Mutes every currently-rendered (background, non-active) tab that isn't already muted,
+ * then reloads the popup to reflect the new state.
+ * @returns {Promise<void>}
+ */
+async function muteAllVisibleTabs() {
+  const targets = [...tabDataMap.values()].filter(tab => !tab.muted);
+  if (targets.length === 0) return;
+  // allSettled: one closed/failed tab shouldn't stop the rest from being muted
+  await Promise.allSettled(
+    targets.map(tab => chrome.runtime.sendMessage({ action: 'muteTab', tabId: tab.id, muted: true }))
+  );
+  await loadNoisyTabs();
+}
+
+/**
  * Replaces #content with a tab item for each entry in noisyTabsList.
  * Populates tabDataMap so the delegated click listener can resolve tab objects by ID.
  * @param {Array<{id: number, windowId: number, title: string, favIconUrl: string, muted: boolean}>} noisyTabsList
@@ -89,6 +118,8 @@ function renderTabs(noisyTabsList) {
     item.appendChild(actions);
     content.appendChild(item);
   });
+
+  updateMuteAllButton();
 }
 
 /**
@@ -171,15 +202,19 @@ async function loadNoisyTabs() {
     if (totalAudioTabs === 0 && allDisplayedTabs.length === 0) {
       tabDataMap.clear();
       content.innerHTML = `<div class="no-tabs">${chrome.i18n.getMessage('noAudio')}</div>`;
+      updateMuteAllButton();
     } else if (allDisplayedTabs.length === 0 && totalAudioTabs > 0) {
       tabDataMap.clear();
       content.innerHTML = `<div class="no-tabs">${chrome.i18n.getMessage('audioCurrentTab')}</div>`;
+      updateMuteAllButton();
     } else {
       renderTabs(allDisplayedTabs);
     }
   } catch (error) {
     console.error('Error loading noisy tabs:', error);
     content.innerHTML = `<div class="no-tabs">${chrome.i18n.getMessage('errorLoadTabs')}</div>`;
+    tabDataMap.clear();
+    updateMuteAllButton();
   }
 }
 
@@ -242,6 +277,13 @@ async function switchToTab(tabId, windowId) {
 
 document.addEventListener('DOMContentLoaded', () => {
   const content = document.getElementById('content');
+  const muteAllBtn = document.getElementById('mute-all-btn');
+
+  muteAllBtn.addEventListener('click', async () => {
+    muteAllBtn.disabled = true;
+    muteAllBtn.textContent = chrome.i18n.getMessage('btnMuting');
+    await muteAllVisibleTabs();
+  });
 
   content.addEventListener('click', async (e) => {
     const item = e.target.closest('[data-tab-id]');
