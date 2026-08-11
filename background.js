@@ -145,7 +145,12 @@ const restored = (async () => {
   if (Array.isArray(result?.shush_muted_tabs)) {
     result.shush_muted_tabs.forEach(id => shushMutedTabs.add(id));
   }
-})();
+})().catch((error) => {
+  // Must never reject: every entry point awaits this, and most of them are listeners with
+  // no try/catch, so a rejected `restored` would silently disable mute tracking for the
+  // whole life of the worker. Losing the persisted set degrades to an empty one instead.
+  console.error('Failed to restore muted tabs:', error);
+});
 
 // Single debounced update replacing scheduleBadgeUpdate + scheduleMenuUpdate
 let updateTimeout;
@@ -174,6 +179,21 @@ function menuSnapshot(noisyTabsList) {
 }
 
 /**
+ * Reports whether a tab currently reads as muted, from Shush!'s perspective.
+ * Must match the `muted` field buildNoisyTabsList puts on the menu: shushMutedTabs alone is
+ * not enough, because a tab the user muted with the browser's own tab mute is labelled
+ * "Unmute Tab" but absent from our set — toggling on the set alone would then mute it again.
+ * shushMutedTabs is still consulted first, since Vivaldi does not reliably update mutedInfo.
+ * @param {number} tabId
+ * @returns {Promise<boolean>}
+ */
+async function isTabMuted(tabId) {
+  if (shushMutedTabs.has(tabId)) return true;
+  const tab = await chrome.tabs.get(tabId).catch(() => null);
+  return tab?.mutedInfo?.muted ?? false;
+}
+
+/**
  * Toggles the mute state of a tab triggered from the context menu.
  * Updates shushMutedTabs, flips the menu item label immediately, then schedules a full rebuild.
  * @param {number} tabId
@@ -181,9 +201,9 @@ function menuSnapshot(noisyTabsList) {
  */
 async function handleMuteToggle(tabId) {
   await restored;
-  // Use shushMutedTabs as source of truth: Vivaldi doesn't reliably update mutedInfo
-  const nowMuted = !shushMutedTabs.has(tabId);
-  chrome.tabs.update(tabId, { muted: nowMuted }).catch(() => {}); // tab may have closed
+  const nowMuted = !(await isTabMuted(tabId));
+  const tab = await chrome.tabs.update(tabId, { muted: nowMuted }).catch(() => null);
+  if (!tab) return; // tab closed while we were resolving its state — nothing to track
   injectMediaMute(tabId, nowMuted);
   // Track tabs muted via context menu so updateAll() keeps them in the menu
   // (muting makes a tab non-audible, so without tracking it disappears)
@@ -567,6 +587,10 @@ function showNoisyTabsInMenu(noisyTabsList) {
       });
 
       renderedTabs = noisyTabsList;
+      // Record the fingerprint here rather than only in updateAll: scanAndShowResults renders
+      // through this function too, and if it left lastMenuSnapshot stale, a later updateAll
+      // could match the stale value and skip a rebuild the menu actually needed.
+      lastMenuSnapshot = menuSnapshot(noisyTabsList);
 
       // Chrome serialises contextMenus operations within a single callback, so
       // resolve() is called after all creates have been queued and will execute

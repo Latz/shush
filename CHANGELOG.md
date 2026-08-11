@@ -16,6 +16,10 @@ All notable changes to Shush! are documented in this file.
 
 ### Minor
 
+- Fixed the context menu muting a tab again when it offered to unmute it. A tab muted with the browser's own tab mute was labelled "Unmute Tab" but needed two clicks to actually unmute.
+- Fixed a tab entry lingering in the context menu after it stopped playing audio, when the menu had last been built by "Find Noisy Tabs".
+- Muting no longer stops working for the rest of the browser session if the saved list of muted tabs cannot be read at startup.
+- A tab closed at the moment it was being muted is no longer written back into the saved list.
 - The background worker no longer requests the list of audible tabs and then throws it away. Whenever anything was muted it was issuing two tab queries per update and using only one.
 - Status messages in the popup are now built as text rather than assembled markup, removing the last places where HTML was generated from a string.
 - Context menu clicks are matched against a single pattern instead of a chain of string replacements, and a non-text menu id is now ignored instead of raising an error.
