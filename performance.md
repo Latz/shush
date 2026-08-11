@@ -183,8 +183,8 @@ Re-verified, no change since the 08-02 pass:
 | 2 | Unconditional `chrome.tabs.query({})` per update tick | `background.js:298-305` | Medium | **Fixed 2026-08-11** |
 | 3 | Re-injection across all frames per audible transition | `background.js:263-285` | Medium | **Fixed 2026-08-11** |
 | 4 | Redundant `audible` query alongside full query | `popup.js:137-146` | Low–Med | **Fixed 2026-08-11** |
-| 5 | No `DocumentFragment` batching in `renderTabs` | `popup.js:78-123` | Nit | Open, no action |
-| 6 | Full menu `removeAll()` + rebuild | `background.js:419-465` | — | Documented ceiling, no action |
+| 5 | No `DocumentFragment` batching in `renderTabs` | `popup.js:78-123` | Nit | **Fixed 2026-08-11** |
+| 6 | Full menu `removeAll()` + rebuild | `background.js:419-465` | — | **Fixed 2026-08-11** |
 
 ## Fixes applied (2026-08-11)
 
@@ -197,3 +197,15 @@ Findings 1–4 were implemented immediately after this review; line references a
 3. **`reinjectMediaMute(tabId)` with a 1 s per-tab cooldown** — applied to the `audible` path only. The `status === 'complete'` path still injects unconditionally: after a navigation the previous injection lived in the old document, so suppressing it there would leave a freshly-loaded page unmuted. `injectMediaMute` stamps `lastInjectAt`, so the re-inject that normally follows a page load is absorbed by the cooldown; `tabs.onRemoved` drops the entry.
 
 4. **Popup derives `audibleTabs` from `allTabs`** — `allTabs.filter(t => t.audible)` replaces the second query, taking popup open from 5 concurrent IPC operations to 4. The test helper in `tests/unit/popup.test.js` was updated to match: audible fixtures are now merged into the `query({})` result with `audible: true` rather than served from a separate mock branch.
+
+Findings 5 and 6 were then fixed as well, on request, despite both having been deprioritized above:
+
+5. **`renderTabs` builds into a `DocumentFragment`** — items are assembled off-document and attached with a single `content.appendChild(fragment)`, one DOM mutation per render instead of one per tab. Nit-level as assessed; the change is three lines and carries no risk.
+
+6. **Context menu diffs in place when the tab set is unchanged** — `canDiffMenu()` gates two paths. Same tab IDs in the same order → `applyMenuDiff()` updates only the parent label (on a mute or current-tab change), the mute item's label, and the Switch/Mute children when a tab becomes or stops being the current tab. Tabs added or removed → the existing `removeAll()` + rebuild, unchanged.
+
+   The gating is what makes this safe, and it is why the earlier reviews and `performance_proposals.md` declined the general version: `chrome.contextMenus` exposes no reorder API, so a naive incremental update lets menu order drift away from tab order as items come and go. Restricting the diff to an unchanged tab set sidesteps that entirely — recreating a tab's own children only appends under that parent, leaving top-level order untouched. The scaling ceiling for a 20+ noisy-tab user is now paid only when tabs actually enter or leave the list, not on every mute toggle or tab switch.
+
+   Supporting refactor: `tabMenuTitle()`, `muteItemTitle()` and `createTabChildItems()` are shared by both paths so they cannot drift, and `renderedTabs` (cleared *before* the async `removeAll()` on the empty path) tracks what the menu currently holds. Covered by `tests/unit/menuDiff.test.js`; `chrome.contextMenus.remove` was added to the test mock.
+
+**Still open:** `menuSnapshot()` does not include tab titles, so a title-only change triggers no menu update at all — a renamed tab keeps its old label until something else changes. `applyMenuDiff` handles titles correctly if reached, but the snapshot early-return means it is not. Pre-existing behaviour, left as is.
