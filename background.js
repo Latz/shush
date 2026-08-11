@@ -346,8 +346,22 @@ async function fetchNoisyData() {
 }
 
 /**
- * Rebuilds the context menu to reflect the current set of noisy tabs.
- * Skips the rebuild if the tab list and mute states match the previous render.
+ * Checks whether the menu can be updated in place rather than torn down and rebuilt:
+ * the same tab IDs, in the same order, as what is currently rendered. Any insertion or removal
+ * needs the full rebuild, since chrome.contextMenus offers no way to reorder existing items.
+ * @param {Array<{id: number}>} noisyTabsList
+ * @returns {boolean}
+ */
+function canDiffMenu(noisyTabsList) {
+  return renderedTabs !== null
+    && renderedTabs.length === noisyTabsList.length
+    && renderedTabs.every((tab, i) => tab.id === noisyTabsList[i].id);
+}
+
+/**
+ * Updates the context menu to reflect the current set of noisy tabs.
+ * Skips all work if the tab list and mute states match the previous render; updates items in
+ * place when only labels changed; falls back to a full rebuild when tabs were added or removed.
  * @returns {Promise<void>}
  */
 async function updateAll() {
@@ -361,6 +375,7 @@ async function updateAll() {
     lastMenuSnapshot = snapshot;
 
     if (noisyTabsList.length === 0) {
+      renderedTabs = null; // set before the async removeAll so a queued update can't diff against a stale menu
       chrome.contextMenus.removeAll(() => {
         chrome.contextMenus.create({
           id: "shush-menu",
@@ -374,6 +389,9 @@ async function updateAll() {
           contexts: ["all"]
         }, () => { if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError); });
       });
+    } else if (canDiffMenu(noisyTabsList)) {
+      applyMenuDiff(noisyTabsList);
+      renderedTabs = noisyTabsList;
     } else {
       await showNoisyTabsInMenu(noisyTabsList);
     }
@@ -452,6 +470,89 @@ function logContextMenuError() {
 }
 
 /**
+ * Builds the parent menu label for a noisy tab: title, trimmed to 30 chars and stripped of any
+ * leading notification count, plus the "(current tab)" and "(muted)" suffixes.
+ * @param {{title: string, muted: boolean, isCurrentTab: boolean}} tab
+ * @returns {string}
+ */
+function tabMenuTitle(tab) {
+  const cleanTitle = tab.title.replace(/^\(\d+\)\s*/, '');
+  const tabTitle = cleanTitle.length > 30 ? cleanTitle.substring(0, 27) + '...' : cleanTitle;
+  const currentLabel = tab.isCurrentTab ? ` ${chrome.i18n.getMessage('menuCurrentTab')}` : '';
+  const mutedLabel = tab.muted ? ` ${chrome.i18n.getMessage('menuMuted')}` : '';
+  return `${tabTitle}${currentLabel}${mutedLabel}`;
+}
+
+/**
+ * Label for a tab's mute/unmute child item.
+ * @param {{muted: boolean}} tab
+ * @returns {string}
+ */
+function muteItemTitle(tab) {
+  return tab.muted
+    ? `🔊 ${chrome.i18n.getMessage('menuUnmuteTab')}`
+    : `🔇 ${chrome.i18n.getMessage('menuMuteTab')}`;
+}
+
+/**
+ * Creates the Switch/Mute child items under a tab's parent entry.
+ * Only background tabs get them — the current tab is a plain label.
+ * @param {{id: number, muted: boolean}} tab
+ */
+function createTabChildItems(tab) {
+  const itemId = `noisy-tab-${tab.id}`;
+  chrome.contextMenus.create({
+    id: `${itemId}-switch`,
+    parentId: itemId,
+    title: `→ ${chrome.i18n.getMessage('menuSwitchToTab')}`,
+    contexts: ["all"]
+  }, logContextMenuError);
+
+  chrome.contextMenus.create({
+    id: `${itemId}-mute`,
+    parentId: itemId,
+    title: muteItemTitle(tab),
+    contexts: ["all"]
+  }, logContextMenuError);
+}
+
+// What the menu currently shows, or null when it is not in the noisy-tab state (never built,
+// or rebuilt as the empty "Find Noisy Tabs" menu). Gates the in-place diff in applyMenuDiff.
+let renderedTabs = null;
+
+/**
+ * Updates the existing menu in place to match noisyTabsList, without a removeAll() + rebuild.
+ * Only valid when the tab IDs are unchanged and in the same order — chrome.contextMenus has no
+ * reorder API, so anything that would change positions has to go through the full rebuild instead.
+ * @param {Array<{id: number, title: string, muted: boolean, isCurrentTab: boolean}>} noisyTabsList
+ */
+function applyMenuDiff(noisyTabsList) {
+  const previousById = new Map(renderedTabs.map(t => [t.id, t]));
+
+  for (const tab of noisyTabsList) {
+    const previous = previousById.get(tab.id);
+    const itemId = `noisy-tab-${tab.id}`;
+
+    if (previous.muted !== tab.muted || previous.isCurrentTab !== tab.isCurrentTab || previous.title !== tab.title) {
+      chrome.contextMenus.update(itemId, { title: tabMenuTitle(tab) }).catch(() => {});
+    }
+
+    if (previous.isCurrentTab !== tab.isCurrentTab) {
+      // Became the current tab: drop its actions. Stopped being it: recreate them. Recreating
+      // appends under this parent only, so sibling order at the top level is untouched.
+      if (tab.isCurrentTab) {
+        chrome.contextMenus.remove(`${itemId}-switch`).catch(() => {});
+        chrome.contextMenus.remove(`${itemId}-mute`).catch(() => {});
+      } else {
+        createTabChildItems(tab);
+      }
+    } else if (!tab.isCurrentTab && previous.muted !== tab.muted) {
+      chrome.contextMenus.update(`${itemId}-mute`, { title: muteItemTitle(tab) }).catch(() => {});
+    }
+  }
+}
+
+/**
  * Clears the Shush! context menu and rebuilds it with one sub-tree per noisy tab.
  * Uses a Promise wrapper because chrome.contextMenus only exposes callback-style APIs.
  * @param {Array<{id: number, title: string, muted: boolean, isCurrentTab: boolean}>} noisyTabsList
@@ -467,35 +568,17 @@ function showNoisyTabsInMenu(noisyTabsList) {
       }, logContextMenuError);
 
       noisyTabsList.forEach((tab) => {
-        const cleanTitle = tab.title.replace(/^\(\d+\)\s*/, '');
-        const tabTitle = cleanTitle.length > 30 ? cleanTitle.substring(0, 27) + '...' : cleanTitle;
-        const itemId = `noisy-tab-${tab.id}`;
-        const currentLabel = tab.isCurrentTab ? ` ${chrome.i18n.getMessage('menuCurrentTab')}` : '';
-        const mutedLabel = tab.muted ? ` ${chrome.i18n.getMessage('menuMuted')}` : '';
-
         chrome.contextMenus.create({
-          id: itemId,
+          id: `noisy-tab-${tab.id}`,
           parentId: "shush-menu",
-          title: `${tabTitle}${currentLabel}${mutedLabel}`,
+          title: tabMenuTitle(tab),
           contexts: ["all"]
         }, logContextMenuError);
 
-        if (!tab.isCurrentTab) {
-          chrome.contextMenus.create({
-            id: `${itemId}-switch`,
-            parentId: itemId,
-            title: `→ ${chrome.i18n.getMessage('menuSwitchToTab')}`,
-            contexts: ["all"]
-          }, logContextMenuError);
-
-          chrome.contextMenus.create({
-            id: `${itemId}-mute`,
-            parentId: itemId,
-            title: tab.muted ? `🔊 ${chrome.i18n.getMessage('menuUnmuteTab')}` : `🔇 ${chrome.i18n.getMessage('menuMuteTab')}`,
-            contexts: ["all"]
-          }, logContextMenuError);
-        }
+        if (!tab.isCurrentTab) createTabChildItems(tab);
       });
+
+      renderedTabs = noisyTabsList;
 
       // Chrome serialises contextMenus operations within a single callback, so
       // resolve() is called after all creates have been queued and will execute

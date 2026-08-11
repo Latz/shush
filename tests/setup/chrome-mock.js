@@ -24,6 +24,7 @@ function setupChromeMock() {
     contextMenus: {
       create: vi.fn().mockImplementation((_props, cb) => { if (cb) cb(); }),
       removeAll: vi.fn().mockImplementation((cb) => { if (cb) cb(); }),
+      remove: vi.fn().mockResolvedValue(undefined),
       update: vi.fn().mockResolvedValue({}),
       onClicked: { addListener: vi.fn() },
     },

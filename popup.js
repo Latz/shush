@@ -81,6 +81,9 @@ function renderTabs(noisyTabsList) {
 
   const content = document.getElementById('content');
   content.innerHTML = '';
+  // Build off-document, then attach once — #content stays in the live tree, so appending each
+  // item directly would touch the rendered DOM once per tab instead of once per render.
+  const fragment = document.createDocumentFragment();
   noisyTabsList.forEach(tab => {
     const cleanTitle = tab.title.replace(/^\(\d+\)\s*/, '');
     const tabTitle = cleanTitle.length > 30 ? cleanTitle.substring(0, 27) + '...' : cleanTitle;
@@ -116,8 +119,9 @@ function renderTabs(noisyTabsList) {
     actions.appendChild(muteBtn);
 
     item.appendChild(actions);
-    content.appendChild(item);
+    fragment.appendChild(item);
   });
+  content.appendChild(fragment);
 
   updateMuteAllButton();
 }
