@@ -1,12 +1,13 @@
-# Justification for `host_permissions: ["<all_urls>"]`
+# Justification for `host_permissions: ["http://*/*", "https://*/*"]`
 
 ## Why it's needed
 
-`chrome.scripting.executeScript()` requires a matching host permission for the target tab. The extension mutes whichever tab the user picks — any site, unpredictable — so a narrow pattern would silently fail on most tabs. `<all_urls>` is the minimum that makes muting work universally.
+`chrome.scripting.executeScript()` requires a matching host permission for the target tab. The extension mutes whichever tab the user picks — any site, unpredictable — so a narrow pattern would silently fail on most tabs. Broad http/https coverage is the minimum that makes muting work universally.
 
 ## Why not a narrower alternative
 
 - **Narrow URL patterns** — would silently fail on every unlisted site.
+- **`<all_urls>`** — broader than needed. The extension only ever acts on tabs whose URL starts with `http`, so schemes such as `file://` and `ftp://` are deliberately excluded.
 - **`activeTab`** — only covers the focused tab; this extension mutes *background* tabs.
 - **Tab mute API alone** — non-functional in some other Chromium-based browsers (e.g. Vivaldi): `mutedInfo.muted` is set but audio continues. The injected script is the only reliable cross-browser fix.
 

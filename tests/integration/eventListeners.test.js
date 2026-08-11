@@ -19,18 +19,18 @@ beforeEach(async () => {
 });
 
 describe('tabs.onUpdated listener (filtered)', () => {
-  test('calls injectMediaMute when a shush-muted tab becomes audible', () => {
+  test('calls injectMediaMute when a shush-muted tab becomes audible', async () => {
     background.shushMutedTabs.add(5);
     const listener = getUpdatedListener();
-    listener(5, { audible: true });
+    await listener(5, { audible: true });
     expect(chrome.scripting.executeScript).toHaveBeenCalledWith(
       expect.objectContaining({ target: expect.objectContaining({ tabId: 5 }) })
     );
   });
 
-  test('does not call injectMediaMute when tab is not shush-muted', () => {
+  test('does not call injectMediaMute when tab is not shush-muted', async () => {
     const listener = getUpdatedListener();
-    listener(5, { audible: true });
+    await listener(5, { audible: true });
     expect(chrome.scripting.executeScript).not.toHaveBeenCalled();
   });
 });
@@ -44,18 +44,18 @@ describe('tabs.onActivated listener', () => {
 });
 
 describe('tabs.onUpdated navigation listener (Vivaldi mute re-inject)', () => {
-  test('re-injects mute when navigation completes on a shush-muted tab', () => {
+  test('re-injects mute when navigation completes on a shush-muted tab', async () => {
     background.shushMutedTabs.add(5);
     const listener = getNavListener();
-    listener(5, { status: 'complete' });
+    await listener(5, { status: 'complete' });
     expect(chrome.scripting.executeScript).toHaveBeenCalledWith(
       expect.objectContaining({ target: expect.objectContaining({ tabId: 5 }) })
     );
   });
 
-  test('does not re-inject when navigation completes on a non-shush-muted tab', () => {
+  test('does not re-inject when navigation completes on a non-shush-muted tab', async () => {
     const listener = getNavListener();
-    listener(5, { status: 'complete' });
+    await listener(5, { status: 'complete' });
     expect(chrome.scripting.executeScript).not.toHaveBeenCalled();
   });
 });
@@ -69,16 +69,16 @@ describe('runtime.onStartup listener', () => {
 });
 
 describe('tabs.onRemoved listener', () => {
-  test('removes closed tab from shushMutedTabs', () => {
+  test('removes closed tab from shushMutedTabs', async () => {
     const { shushMutedTabs } = background;
     shushMutedTabs.add(5);
     const listener = chrome.tabs.onRemoved.addListener.mock.calls[0][0];
-    listener(5);
+    await listener(5);
     expect(shushMutedTabs.has(5)).toBe(false);
   });
 
-  test('schedules an update when a tab is closed', () => {
+  test('schedules an update when a tab is closed', async () => {
     const listener = chrome.tabs.onRemoved.addListener.mock.calls[0][0];
-    expect(() => listener(99)).not.toThrow();
+    await expect(listener(99)).resolves.not.toThrow();
   });
 });

@@ -16,6 +16,10 @@ All notable changes to Shush! are documented in this file.
 
 ### Minor
 
+- Fixed muted tabs occasionally being forgotten entirely: the background worker could act on its saved list before that list had finished loading, and closing a tab in that window wiped the saved state.
+- Mute state is now written to storage immediately instead of a fraction of a second later, so it can no longer be lost when the browser shuts the background worker down.
+- The popup now saves its tab list as it changes rather than while closing, where the save frequently did not complete.
+- Narrowed the site access permission from all URLs to web pages (`http`/`https`) only — the extension never acted on other address types.
 - The popup's scrollbar is now slim and reserves its space, so a long list of noisy tabs no longer shifts sideways the moment the scrollbar appears.
 - Button labels now use a browser-computed contrast colour, keeping them legible on every button background.
 - Popup stylesheet modernised to current web standards (single set of colour tokens covering both themes, logical properties, balanced heading wrapping). No visual change intended.

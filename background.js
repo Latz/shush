@@ -1,10 +1,18 @@
+import { switchToTab } from './shared/vivaldi.js';
+
 // Handle mute requests from popup (avoids popup-context revert behaviour)
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.action === 'muteTab') {
     const { tabId, muted } = message;
-    if (!Number.isInteger(tabId) || tabId <= 0 || typeof muted !== 'boolean') return;
+    if (!Number.isInteger(tabId) || tabId <= 0 || typeof muted !== 'boolean') {
+      // Answer explicitly: returning without a response closes the port and surfaces
+      // as a "message port closed" rejection in the sender rather than a result.
+      sendResponse({ muted: false, error: 'invalid' });
+      return;
+    }
     (async () => {
       try {
+        await restored;
         const tab = await chrome.tabs.update(tabId, { muted });
         const actualMuted = tab.mutedInfo?.muted ?? muted;
         injectMediaMute(tabId, actualMuted);
@@ -22,7 +30,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     })();
     return true; // keep channel open for async response
   } else if (message.action === 'getShushMutedTabs') {
-    sendResponse([...shushMutedTabs]);
+    // Must await `restored`: a message can be the very event that woke the worker, in which
+    // case the set is still empty and the popup would render nothing as muted.
+    restored.then(() => sendResponse([...shushMutedTabs]));
+    return true; // keep channel open for async response
   }
 });
 
@@ -113,18 +124,23 @@ function reinjectMediaMute(tabId) {
 // makes them non-audible. Cleared when unmuted or tab closed.
 const shushMutedTabs = new Set();
 
-// Debounced: batches rapid storage writes (e.g. closing a window with many tabs)
-let saveTimeout;
-/** Persists shushMutedTabs to chrome.storage.local (debounced 100 ms). */
+/**
+ * Persists shushMutedTabs to chrome.storage.local.
+ * Deliberately un-debounced: a pending setTimeout does not keep an MV3 service worker
+ * alive, so a deferred write can be dropped entirely when Chrome terminates the worker
+ * between the mute and the flush. chrome.storage.local.set already coalesces internally.
+ * @returns {Promise<void>}
+ */
 function saveShushMutedTabs() {
-  clearTimeout(saveTimeout);
-  saveTimeout = setTimeout(() => {
-    chrome.storage.local.set({ shush_muted_tabs: [...shushMutedTabs] });
-  }, 100);
+  return chrome.storage.local.set({ shush_muted_tabs: [...shushMutedTabs] });
 }
 
-// Restore persisted muted-tab IDs when the service worker restarts
-(async () => {
+// Restore persisted muted-tab IDs when the service worker restarts.
+// Chrome dispatches the event that woke the worker as soon as top-level evaluation
+// finishes — i.e. before this get() resolves — so every entry point that reads or writes
+// shushMutedTabs must await this promise first. Without it, an early tabs.onRemoved would
+// call saveShushMutedTabs() on a still-empty set and wipe the persisted state.
+const restored = (async () => {
   const result = await chrome.storage.local.get('shush_muted_tabs');
   if (Array.isArray(result?.shush_muted_tabs)) {
     result.shush_muted_tabs.forEach(id => shushMutedTabs.add(id));
@@ -157,8 +173,10 @@ function menuSnapshot(noisyTabsList) {
  * Toggles the mute state of a tab triggered from the context menu.
  * Updates shushMutedTabs, flips the menu item label immediately, then schedules a full rebuild.
  * @param {number} tabId
+ * @returns {Promise<void>}
  */
-function handleMuteToggle(tabId) {
+async function handleMuteToggle(tabId) {
+  await restored;
   // Use shushMutedTabs as source of truth: Vivaldi doesn't reliably update mutedInfo
   const nowMuted = !shushMutedTabs.has(tabId);
   chrome.tabs.update(tabId, { muted: nowMuted }).catch(() => {}); // tab may have closed
@@ -182,55 +200,6 @@ function handleMuteToggle(tabId) {
   scheduleUpdate();
 }
 
-/**
- * Reads the Vivaldi-specific workspace ID off a tab, if present.
- * Undocumented field (vivExtData); absent entirely on Chrome, so this is a natural no-op there.
- * Normalizes to Number since Vivaldi has been observed reporting the same ID as either an int or a float.
- * @param {chrome.tabs.Tab} tab
- * @returns {number|null}
- */
-function getVivaldiWorkspaceId(tab) {
-  if (!tab?.vivExtData) return null;
-  try {
-    const id = JSON.parse(tab.vivExtData)?.workspaceId;
-    return id === undefined || id === null ? null : Number(id);
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Activates a tab and focuses its window. On Vivaldi, if the tab belongs to a different
- * Workspace than the one currently shown, the tab becomes active per the API but stays
- * hidden (Workspaces are a UI-only filter with no extension API to switch) — in that case
- * also shows a notification explaining why nothing visibly changed.
- * @param {number} tabId
- * @returns {Promise<void>}
- */
-async function switchToTab(tabId) {
-  const target = await chrome.tabs.get(tabId).catch(() => null);
-  if (target) {
-    const [activeInWindow] = await chrome.tabs.query({ active: true, windowId: target.windowId }).catch(() => []);
-    // vivExtData is Vivaldi-only; its presence on *either* tab means we're on Vivaldi and can
-    // compare workspaces. Tabs in the default/no-name workspace can report a null workspaceId,
-    // so null must be treated as a distinct, comparable state — not "no data, skip the check".
-    if (target.vivExtData || activeInWindow?.vivExtData) {
-      const targetWorkspace = getVivaldiWorkspaceId(target);
-      const activeWorkspace = getVivaldiWorkspaceId(activeInWindow);
-      if (targetWorkspace !== activeWorkspace) {
-        chrome.notifications.create({
-          type: 'basic',
-          iconUrl: 'icons/icon48.png',
-          title: "Shush!",
-          message: chrome.i18n.getMessage('tabInOtherWorkspace')
-        });
-      }
-    }
-  }
-  const tab = await chrome.tabs.update(tabId, { active: true });
-  await chrome.windows.update(tab.windowId, { focused: true });
-}
-
 chrome.contextMenus.onClicked.addListener(async (info) => {
   if (info.menuItemId === "find-noisy-tabs") {
     scanAndShowResults();
@@ -242,7 +211,7 @@ chrome.contextMenus.onClicked.addListener(async (info) => {
   } else if (info.menuItemId.endsWith("-mute")) {
     const tabId = Number.parseInt(info.menuItemId.replace("-mute", "").replace("noisy-tab-", ""), 10);
     if (Number.isFinite(tabId) && tabId > 0) {
-      handleMuteToggle(tabId);
+      await handleMuteToggle(tabId);
     }
   }
   // else: click on a noisy-tab-N parent label (current tab or background tab title) — no action
@@ -251,7 +220,7 @@ chrome.contextMenus.onClicked.addListener(async (info) => {
 chrome.commands.onCommand.addListener(async (command) => {
   if (command !== 'toggle-mute-current') return;
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (tab) handleMuteToggle(tab.id);
+  if (tab) await handleMuteToggle(tab.id);
 });
 
 // Background service worker for Shush! extension
@@ -286,9 +255,12 @@ chrome.runtime.onStartup.addListener(() => {
 });
 
 // Listen for tab close to update menu
-chrome.tabs.onRemoved.addListener((tabId) => {
-  shushMutedTabs.delete(tabId);
+chrome.tabs.onRemoved.addListener(async (tabId) => {
   lastInjectAt.delete(tabId);
+  // Await the restore before deleting + saving, or a close that woke the worker would
+  // persist an empty set over the real one.
+  await restored;
+  shushMutedTabs.delete(tabId);
   saveShushMutedTabs();
   scheduleUpdate();
 });
@@ -296,7 +268,8 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 // Track audio state and re-inject mute on navigation (mute is lost on page load in Vivaldi)
 // Use declarative event filter where supported; fall back to JS-side check (e.g. Vivaldi)
 try {
-  chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
+    await restored;
     if (changeInfo.status === 'complete' && shushMutedTabs.has(tabId)) {
       injectMediaMute(tabId, true);
     }
@@ -309,7 +282,8 @@ try {
   }, { properties: ['audible', 'status'] });
 } catch (e) {
   console.debug('Event filter not supported, falling back to unfiltered listener:', e);
-  chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
+    await restored;
     if (changeInfo.status === 'complete' && shushMutedTabs.has(tabId)) {
       injectMediaMute(tabId, true);
     }
@@ -334,6 +308,7 @@ chrome.tabs.onActivated.addListener(() => {
  * @returns {Promise<{noisyTabs: chrome.tabs.Tab[], currentActiveTab: chrome.tabs.Tab|undefined}>}
  */
 async function fetchNoisyData() {
+  await restored; // shushMutedTabs gates the full-query branch below
   const [audibleTabs, allTabs, [currentActiveTab]] = await Promise.all([
     chrome.tabs.query({ audible: true }),
     shushMutedTabs.size > 0 ? chrome.tabs.query({}) : Promise.resolve(null),
@@ -588,4 +563,6 @@ function showNoisyTabsInMenu(noisyTabsList) {
   });
 }
 
-export { buildNoisyTabsList, showNoisyTabsInMenu, scanAndShowResults, updateAll, shushMutedTabs, scheduleUpdate, fetchNoisyData, getVivaldiWorkspaceId };
+export { buildNoisyTabsList, showNoisyTabsInMenu, scanAndShowResults, updateAll, shushMutedTabs, scheduleUpdate, fetchNoisyData, handleMuteToggle, restored };
+// Re-exported for tests, which exercise the Vivaldi helpers through this module's surface.
+export { getVivaldiWorkspaceId } from './shared/vivaldi.js';

@@ -1,6 +1,12 @@
+import { switchToTab } from './shared/vivaldi.js';
+
 // Popup script for Shush! extension
 
 const tabDataMap = new Map();
+
+// Set when loadNoisyTabs throws; suppresses saveTabState so a transient failure can't
+// overwrite the persisted list with the empty map the error branch leaves behind.
+let loadFailed = false;
 
 /**
  * Detects a new browser session and clears stale saved tabs when one is found.
@@ -124,6 +130,7 @@ function renderTabs(noisyTabsList) {
   content.appendChild(fragment);
 
   updateMuteAllButton();
+  saveTabState();
 }
 
 /**
@@ -136,6 +143,7 @@ async function loadNoisyTabs() {
   content.innerHTML = `<div class="no-tabs">${chrome.i18n.getMessage('popupScanning')}</div>`;
 
   try {
+    loadFailed = false;
     await checkSessionNonce();
 
     const [[currentActiveTab], allTabs, bgMutedIds, savedData] = await Promise.all([
@@ -210,77 +218,47 @@ async function loadNoisyTabs() {
       tabDataMap.clear();
       content.innerHTML = `<div class="no-tabs">${chrome.i18n.getMessage('noAudio')}</div>`;
       updateMuteAllButton();
+      saveTabState();
     } else if (allDisplayedTabs.length === 0 && totalAudioTabs > 0) {
       tabDataMap.clear();
       content.innerHTML = `<div class="no-tabs">${chrome.i18n.getMessage('audioCurrentTab')}</div>`;
       updateMuteAllButton();
+      saveTabState();
     } else {
       renderTabs(allDisplayedTabs);
     }
   } catch (error) {
     console.error('Error loading noisy tabs:', error);
+    loadFailed = true;
     content.innerHTML = `<div class="no-tabs">${chrome.i18n.getMessage('errorLoadTabs')}</div>`;
     tabDataMap.clear();
     updateMuteAllButton();
   }
 }
 
-window.addEventListener('unload', () => {
+/**
+ * Persists the currently-rendered tab list to chrome.storage.local.
+ * Called eagerly on every state change rather than at teardown: an extension popup is torn
+ * down abruptly, so an async storage write started from unload/pagehide rarely completes.
+ * @returns {Promise<void>}
+ */
+function saveTabState() {
+  // A failed load empties tabDataMap without that reflecting reality — writing then would
+  // discard the previous session's list over a transient error.
+  if (loadFailed) return Promise.resolve();
   const toSave = [...tabDataMap.values()].map(tab => ({
     tabId: tab.id,
     title: tab.title,
     favIconUrl: tab.favIconUrl,
     muted: tab.muted,
   }));
-  chrome.storage.local.set({ shush_saved_tabs: toSave });
-});
-
-/**
- * Reads the Vivaldi-specific workspace ID off a tab, if present.
- * Undocumented field (vivExtData); absent entirely on Chrome, so this is a natural no-op there.
- * Normalizes to Number since Vivaldi has been observed reporting the same ID as either an int or a float.
- * @param {chrome.tabs.Tab} tab
- * @returns {number|null}
- */
-function getVivaldiWorkspaceId(tab) {
-  if (!tab?.vivExtData) return null;
-  try {
-    const id = JSON.parse(tab.vivExtData)?.workspaceId;
-    return id === undefined || id === null ? null : Number(id);
-  } catch {
-    return null;
-  }
+  return chrome.storage.local.set({ shush_saved_tabs: toSave });
 }
 
-/**
- * Activates a tab and focuses its window. On Vivaldi, if the tab belongs to a different
- * Workspace than the one currently shown, the tab becomes active per the API but stays
- * hidden (Workspaces are a UI-only filter with no extension API to switch) — in that case
- * also shows a notification explaining why nothing visibly changed.
- * @param {number} tabId
- * @param {number} windowId
- * @returns {Promise<void>}
- */
-async function switchToTab(tabId, windowId) {
-  const target = await chrome.tabs.get(tabId).catch(() => null);
-  if (target) {
-    const [activeInWindow] = await chrome.tabs.query({ active: true, windowId }).catch(() => []);
-    if (target.vivExtData || activeInWindow?.vivExtData) {
-      const targetWorkspace = getVivaldiWorkspaceId(target);
-      const activeWorkspace = getVivaldiWorkspaceId(activeInWindow);
-      if (targetWorkspace !== activeWorkspace) {
-        chrome.notifications.create({
-          type: 'basic',
-          iconUrl: 'icons/icon48.png',
-          title: "Shush!",
-          message: chrome.i18n.getMessage('tabInOtherWorkspace')
-        });
-      }
-    }
-  }
-  chrome.tabs.update(tabId, { active: true });
-  chrome.windows.update(windowId, { focused: true });
-}
+// Best-effort backstop for state changed after the last eager save. pagehide rather than the
+// deprecated unload, which browsers increasingly skip firing altogether.
+/** @listens pagehide */
+window.addEventListener('pagehide', () => { saveTabState(); });
 
 document.addEventListener('DOMContentLoaded', () => {
   const content = document.getElementById('content');
@@ -325,6 +303,9 @@ document.addEventListener('DOMContentLoaded', () => {
         muteBtn.textContent = tab.muted ? 'Unshush!' : 'Shush!';
         muteBtn.className = tab.muted ? 'unmute-btn' : 'mute-btn';
       }
+      // Persist the settled state now — the popup can be dismissed at any moment
+      saveTabState();
+      updateMuteAllButton();
     }
   });
 

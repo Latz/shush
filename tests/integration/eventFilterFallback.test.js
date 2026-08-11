@@ -35,7 +35,7 @@ describe('event filter fallback', () => {
 
     // calls[0]=filtered (throws), calls[1]=fallback
     const fallbackListener = chrome.tabs.onUpdated.addListener.mock.calls[1][0];
-    fallbackListener(7, { audible: true });
+    await fallbackListener(7, { audible: true });
 
     expect(chrome.scripting.executeScript).toHaveBeenCalledWith(
       expect.objectContaining({ target: expect.objectContaining({ tabId: 7 }) })

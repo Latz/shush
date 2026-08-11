@@ -21,23 +21,23 @@ describe('context menu click handler', () => {
     expect(chrome.windows.update).toHaveBeenCalledWith(7, { focused: true });
   });
 
-  test('mute item mutes an unmuted tab', () => {
-    getClickHandler()({ menuItemId: 'noisy-tab-7-mute' });
+  test('mute item mutes an unmuted tab', async () => {
+    await getClickHandler()({ menuItemId: 'noisy-tab-7-mute' });
     expect(chrome.tabs.update).toHaveBeenCalledWith(7, { muted: true });
   });
 
-  test('mute item immediately updates the menu item label', () => {
-    getClickHandler()({ menuItemId: 'noisy-tab-7-mute' });
+  test('mute item immediately updates the menu item label', async () => {
+    await getClickHandler()({ menuItemId: 'noisy-tab-7-mute' });
     expect(chrome.contextMenus.update).toHaveBeenCalledWith(
       'noisy-tab-7-mute',
       expect.objectContaining({ title: expect.stringContaining('menuUnmuteTab') })
     );
   });
 
-  test('mute item unmutes a previously shush-muted tab', () => {
+  test('mute item unmutes a previously shush-muted tab', async () => {
     const { shushMutedTabs } = background;
     shushMutedTabs.add(7);
-    getClickHandler()({ menuItemId: 'noisy-tab-7-mute' });
+    await getClickHandler()({ menuItemId: 'noisy-tab-7-mute' });
     expect(chrome.tabs.update).toHaveBeenCalledWith(7, { muted: false });
   });
 

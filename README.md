@@ -65,7 +65,7 @@ Any tab where audio is actually coming out — ▶️ YouTube playing, 🎧 Spot
 | `notifications`                | Show a notification when "Find Noisy Tabs" finds nothing                                                                                                                                                                                                                 |
 | `scripting`                    | Inject a script into tabs you mute or unmute to silence `<audio>` and `<video>` elements directly, including inside embedded frames (e.g. video players in iframes) — needed for browsers (e.g. Vivaldi) where the standard tab mute API does not silence audio playback |
 | `storage`                      | Persist muted-tab state across service worker restarts and popup open/close cycles                                                                                                                                                                                       |
-| `<all_urls>` (host permission) | Required by the `scripting` API to inject into tabs regardless of which site they're on — the injected script only sets `.muted` on media elements and reads nothing                                                                                                     |
+| `http://*/*`, `https://*/*` (host permissions) | Required by the `scripting` API to inject into tabs regardless of which site they're on — the injected script only sets `.muted` on media elements and reads nothing. Narrower than `<all_urls>`: non-web schemes such as `file://` are excluded          |
 
 ---
 

@@ -314,11 +314,24 @@ describe('popup storage — checkSessionNonce', () => {
   });
 });
 
-describe('popup storage — unload persistence', () => {
-  test('saves displayed tabs to chrome.storage.local on unload', async () => {
-    const bgTab = { id: 2, url: 'https://music.com', title: 'Music', favIconUrl: '', mutedInfo: { muted: false } };
+describe('popup storage — persistence', () => {
+  const bgTab = { id: 2, url: 'https://music.com', title: 'Music', favIconUrl: '', mutedInfo: { muted: false } };
+
+  test('saves displayed tabs to chrome.storage.local as soon as they are rendered', async () => {
     await loadPopup([bgTab]);
-    window.dispatchEvent(new Event('unload'));
+    expect(chrome.storage.local.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        shush_saved_tabs: expect.arrayContaining([
+          expect.objectContaining({ tabId: 2 })
+        ])
+      })
+    );
+  });
+
+  test('also saves on pagehide as a backstop', async () => {
+    await loadPopup([bgTab]);
+    chrome.storage.local.set.mockClear();
+    window.dispatchEvent(new Event('pagehide'));
     expect(chrome.storage.local.set).toHaveBeenCalledWith(
       expect.objectContaining({
         shush_saved_tabs: expect.arrayContaining([
