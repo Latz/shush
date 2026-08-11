@@ -134,13 +134,16 @@ async function loadNoisyTabs() {
   try {
     await checkSessionNonce();
 
-    const [audibleTabs, [currentActiveTab], allTabs, bgMutedIds, savedData] = await Promise.all([
-      chrome.tabs.query({ audible: true }),
+    const [[currentActiveTab], allTabs, bgMutedIds, savedData] = await Promise.all([
       chrome.tabs.query({ active: true, currentWindow: true }),
       chrome.tabs.query({}),
       chrome.runtime.sendMessage({ action: 'getShushMutedTabs' }).catch(() => []),
       chrome.storage.local.get('shush_saved_tabs'),
     ]);
+
+    // Derived from allTabs rather than a second chrome.tabs.query({ audible: true }) —
+    // the audible set is a strict subset, so the extra round-trip bought nothing.
+    const audibleTabs = allTabs.filter(t => t.audible);
 
     // Single map covering all open tabs — used instead of N individual chrome.tabs.get calls
     const tabById = new Map(allTabs.map(t => [t.id, t]));

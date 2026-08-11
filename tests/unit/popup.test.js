@@ -28,10 +28,15 @@ async function importPopupAndInit() {
 }
 
 async function loadPopup(audibleTabs = [], activeTab = DEFAULT_ACTIVE_TAB, allTabs = []) {
+  // popup.js derives the audible set from the single chrome.tabs.query({}) result, so the
+  // audible tabs have to appear in that result carrying `audible: true`.
+  const byId = new Map(allTabs.map(t => [t.id, t]));
+  for (const tab of audibleTabs) {
+    byId.set(tab.id, { ...byId.get(tab.id), ...tab, audible: true });
+  }
   chrome.tabs.query.mockImplementation((filter) => {
-    if (filter.audible) return Promise.resolve(audibleTabs);
     if (filter.active) return Promise.resolve([activeTab]);
-    return Promise.resolve(allTabs); // chrome.tabs.query({}) — all open tabs
+    return Promise.resolve([...byId.values()]); // chrome.tabs.query({}) — all open tabs
   });
   await importPopupAndInit();
   // Wait for async loadNoisyTabs to complete
@@ -249,9 +254,8 @@ describe('Mute All', () => {
     // Once a tab is shush-muted it stops being audible (real browser behavior) —
     // simulate that so the reload after Mute All reflects the new state.
     chrome.tabs.query.mockImplementation((filter) => {
-      if (filter.audible) return Promise.resolve(shushMuted.includes(bgTab.id) ? [] : [bgTab]);
       if (filter.active) return Promise.resolve([DEFAULT_ACTIVE_TAB]);
-      return Promise.resolve([bgTab]);
+      return Promise.resolve([{ ...bgTab, audible: !shushMuted.includes(bgTab.id) }]);
     });
     await importPopupAndInit();
     await new Promise(r => setTimeout(r, 50));

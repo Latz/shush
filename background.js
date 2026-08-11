@@ -26,14 +26,21 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 });
 
+// Timestamp of the last injection per tab, used by reinjectMediaMute to skip redundant
+// re-injections. Entries are dropped in tabs.onRemoved.
+const lastInjectAt = new Map();
+const REINJECT_COOLDOWN_MS = 1000;
+
 /**
  * Injects a content script (main world) that mutes/unmutes all audio and video elements in a tab.
  * While muting, also patches HTMLMediaElement.prototype.muted so the page's own scripts can't
  * un-mute an existing element, and installs a MutationObserver so newly added media stays muted.
+ * Records the injection time so reinjectMediaMute can suppress redundant follow-ups.
  * @param {number} tabId
  * @param {boolean} muted
  */
 function injectMediaMute(tabId, muted) {
+  lastInjectAt.set(tabId, Date.now());
   chrome.scripting.executeScript({
     target: { tabId, allFrames: true },
     world: 'MAIN', // required so the .muted property patch below applies to the page's own scripts, not just the extension's isolated world
@@ -60,8 +67,22 @@ function injectMediaMute(tabId, muted) {
       });
       if (m) {
         if (!globalThis.__shushObserver) {
-          globalThis.__shushObserver = new MutationObserver(() => {
-            document.querySelectorAll('audio, video').forEach(el => { el.muted = true; });
+          // Only inspect nodes that were actually added, rather than re-scanning the whole
+          // document per mutation batch: on churny pages (live chat, infinite scroll) the vast
+          // majority of batches contain no media at all, and a full querySelectorAll per batch
+          // is page-visible jank. Existing elements are already covered by the .muted patch above,
+          // so newly inserted nodes are the only thing this observer needs to catch.
+          globalThis.__shushObserver = new MutationObserver((mutations) => {
+            for (const mutation of mutations) {
+              for (const node of mutation.addedNodes) {
+                if (node.nodeType !== Node.ELEMENT_NODE) continue;
+                if (node.matches('audio, video')) {
+                  node.muted = true;
+                } else {
+                  node.querySelectorAll('audio, video').forEach(el => { el.muted = true; });
+                }
+              }
+            }
           });
           globalThis.__shushObserver.observe(document.documentElement, { childList: true, subtree: true });
         }
@@ -72,6 +93,20 @@ function injectMediaMute(tabId, muted) {
     },
     args: [muted]
   }).catch(() => {}); // silently ignore restricted pages (chrome://, PDFs, etc.)
+}
+
+/**
+ * Re-applies the mute injection to an already-shush-muted tab, skipping calls that land within
+ * REINJECT_COOLDOWN_MS of the previous injection for the same tab. A muted tab can flip `audible`
+ * many times a minute (ad breaks, silence gaps) and every injection re-runs the script in every
+ * frame; the injected function is idempotent, so a re-inject that just happened adds nothing.
+ * Only for the audible path — navigation ('complete') must always re-inject, since the previous
+ * injection lived in the old document.
+ * @param {number} tabId
+ */
+function reinjectMediaMute(tabId) {
+  if (Date.now() - (lastInjectAt.get(tabId) ?? 0) < REINJECT_COOLDOWN_MS) return;
+  injectMediaMute(tabId, true);
 }
 
 // Tabs muted via the context menu — kept visible in the menu even after muting
@@ -253,6 +288,7 @@ chrome.runtime.onStartup.addListener(() => {
 // Listen for tab close to update menu
 chrome.tabs.onRemoved.addListener((tabId) => {
   shushMutedTabs.delete(tabId);
+  lastInjectAt.delete(tabId);
   saveShushMutedTabs();
   scheduleUpdate();
 });
@@ -267,7 +303,7 @@ try {
     if (changeInfo.audible !== undefined) {
       scheduleUpdate();
       if (changeInfo.audible === true && shushMutedTabs.has(tabId)) {
-        injectMediaMute(tabId, true);
+        reinjectMediaMute(tabId);
       }
     }
   }, { properties: ['audible', 'status'] });
@@ -279,7 +315,7 @@ try {
     }
     if (changeInfo.audible !== undefined) scheduleUpdate();
     if (changeInfo.audible === true && shushMutedTabs.has(tabId)) {
-      injectMediaMute(tabId, true);
+      reinjectMediaMute(tabId);
     }
   });
 }
@@ -290,17 +326,22 @@ chrome.tabs.onActivated.addListener(() => {
 });
 
 /**
- * Fetches all tabs and the focused active tab in two round-trips, then derives the
- * audible + shush-muted tab list locally (avoids one chrome.tabs.get() per muted tab).
- * Shared by updateAll and scanAndShowResults to avoid duplicate queries.
+ * Fetches the audible tabs and the focused active tab, then derives the noisy-tab list locally.
+ * The full chrome.tabs.query({}) is only issued when something is shush-muted: it is the one way
+ * to resolve muted (and therefore no longer audible) tabs without one chrome.tabs.get() per tab,
+ * but it serializes every open tab, which is wasted payload on every scheduleUpdate() tick when
+ * nothing is muted. Shared by updateAll and scanAndShowResults to avoid duplicate queries.
  * @returns {Promise<{noisyTabs: chrome.tabs.Tab[], currentActiveTab: chrome.tabs.Tab|undefined}>}
  */
 async function fetchNoisyData() {
-  const [allTabs, [currentActiveTab]] = await Promise.all([
-    chrome.tabs.query({}),
+  const [audibleTabs, allTabs, [currentActiveTab]] = await Promise.all([
+    chrome.tabs.query({ audible: true }),
+    shushMutedTabs.size > 0 ? chrome.tabs.query({}) : Promise.resolve(null),
     chrome.tabs.query({ active: true, lastFocusedWindow: true })
   ]);
-  const noisyTabs = allTabs.filter(t => t.audible || shushMutedTabs.has(t.id));
+  const noisyTabs = allTabs
+    ? allTabs.filter(t => t.audible || shushMutedTabs.has(t.id))
+    : audibleTabs;
   return { noisyTabs, currentActiveTab };
 }
 
