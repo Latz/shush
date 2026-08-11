@@ -16,7 +16,10 @@ jobs:
           fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          # 22, not 20: the popup uses ES2025 iterator helpers (.values().toArray()),
+          # which Node only gained in 22. Chrome has had them since 122, the version
+          # manifest.json declares as the minimum, so this is a test-runtime floor only.
+          node-version: '22'
       - run: npm ci
       - run: npm run test:coverage
       - name: SonarQube Scan

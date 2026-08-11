@@ -2,6 +2,9 @@
   "name": "shush",
   "version": "1.1.0",
   "private": true,
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
