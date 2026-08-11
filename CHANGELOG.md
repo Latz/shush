@@ -4,6 +4,12 @@ All notable changes to Shush! are documented in this file.
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-08-11
+
+### Minor
+
+- Recompressed the toolbar icons — the packaged extension is about a third of its previous size, with no change to how the icons look. The SVG sources now match the shipped artwork.
+
 ## [1.0.0] - 2026-08-11
 
 First release.
