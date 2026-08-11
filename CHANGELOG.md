@@ -20,51 +20,16 @@ First release.
 
 ### Minor
 
-- The injected muting script is now covered by tests, including that a page cannot un-mute itself and that media added after muting stays silent.
-- Tab icons in the popup now come from the browser's own icon cache instead of being fetched from each site, so opening the popup no longer tells those sites anything.
-- The popup heading is now a proper top-level heading, tab buttons carry descriptive labels for screen readers, and the popup reports the language it is actually displaying.
-- Context menu rebuilds can no longer overlap each other.
-- A failure to save the muted-tab list is now reported instead of passing silently.
-- Fixed the context menu muting a tab again when it offered to unmute it. A tab muted with the browser's own tab mute was labelled "Unmute Tab" but needed two clicks to actually unmute.
-- Fixed a tab entry lingering in the context menu after it stopped playing audio, when the menu had last been built by "Find Noisy Tabs".
-- Muting no longer stops working for the rest of the browser session if the saved list of muted tabs cannot be read at startup.
-- A tab closed at the moment it was being muted is no longer written back into the saved list.
-- The background worker no longer requests the list of audible tabs and then throws it away. Whenever anything was muted it was issuing two tab queries per update and using only one.
-- Status messages in the popup are now built as text rather than assembled markup, removing the last places where HTML was generated from a string.
-- Context menu clicks are matched against a single pattern instead of a chain of string replacements, and a non-text menu id is now ignored instead of raising an error.
-- The popup builds its tab list in one pass instead of three, and no longer fails if the background worker does not answer.
-- Requires Chrome 122 or newer, now declared in the manifest.
-- Fixed muted tabs occasionally being forgotten entirely: the background worker could act on its saved list before that list had finished loading, and closing a tab in that window wiped the saved state.
-- Mute state is now written to storage immediately instead of a fraction of a second later, so it can no longer be lost when the browser shuts the background worker down.
-- The popup now saves its tab list as it changes rather than while closing, where the save frequently did not complete.
-- Narrowed the site access permission from all URLs to web pages (`http`/`https`) only — the extension never acted on other address types.
-- The popup's scrollbar is now slim and reserves its space, so a long list of noisy tabs no longer shifts sideways the moment the scrollbar appears.
-- Button labels now use a browser-computed contrast colour, keeping them legible on every button background.
-- Popup stylesheet modernised to current web standards (single set of colour tokens covering both themes, logical properties, balanced heading wrapping). No visual change intended.
-- The "Find Noisy Tabs" context menu is now updated in place when a tab is muted or you switch tabs, instead of being torn down and rebuilt each time. It is still rebuilt when tabs start or stop making noise, so the menu order always follows the tab order.
-- The popup builds its tab list in one go before showing it, rather than adding entries one by one.
-- The injected mute script now only inspects newly added DOM nodes instead of re-scanning the whole page on every mutation. Removes noticeable slowdown on busy pages (live chat, infinite scroll) while a tab is muted.
-- Background worker no longer fetches every open tab on each update when nothing is shush-muted — it queries only audible tabs in that case.
-- Repeated mute re-injections are now throttled to once per second per tab. Pages that start and stop audio frequently (ad breaks, gaps between tracks) no longer trigger a script injection into every frame each time. Re-injection after a page navigation is unaffected.
-- Popup opens with one fewer browser query: the audible-tab list is derived from the tab list it already requests.
-- Switching to a tab that lives in a different Vivaldi Workspace now shows a notification explaining why the tab did not visibly come to the front.
-- Fixed a short audio "peep" in Vivaldi when muting a tab.
-- Muted tabs are remembered across popup open/close cycles and across service worker restarts, and stale entries are cleared when a new browser session starts.
-- Tabs muted from the context menu now also appear in the popup, so they can be unmuted from either place.
-- Mute/unmute state in the popup updates immediately instead of waiting for the browser to respond.
-- Switching to a tab now also focuses its window.
+- Muted tabs are remembered across popup open/close cycles and across browser restarts, and stale entries are cleared when a new session starts.
+- Tabs muted from the context menu also appear in the popup, so they can be unmuted from either place.
+- Mute survives page navigation and a muted tab starting to play again — needed in Vivaldi, which drops the mute on load.
 - Media that a player paused on mute resumes when you unmute.
-- Mute stays applied after a page navigation and when a muted tab starts producing audio again (Vivaldi).
+- Switching to a tab also focuses its window, and warns when the tab sits in a different Vivaldi Workspace and so cannot be brought to the front.
 - The current tab is labelled as such in the context menu and shown as a plain entry without Switch/Mute sub-items.
 - Leading notification counts (for example "(3)") are stripped from tab titles.
-- Toolbar icon redesigned as the 🤫 emoji.
-- Favicons that fail to load are removed from the popup instead of leaving a gap, and mute buttons have a fixed width so the layout no longer shifts when the label changes.
-- Various speed-ups reducing the number of browser API calls: badge and menu updates merged into one pass, tab queries parallelised, debounced updates on rapid tab switching, and an event filter so only relevant tab updates are processed (with an automatic fallback for browsers that reject it).
+- Favicons that fail to load are removed from the popup instead of leaving a gap, and mute buttons have a fixed width so the layout does not shift when the label changes.
+- Requires Chrome 122 or newer.
 
-### Deletions
+### Site access
 
-- Removed the French, Spanish, Japanese and Chinese translations. English and German remain; other locales fall back to English.
-- Removed the action-icon badge.
-- Removed the "Close Menu" entry from the context menu.
-- Removed the "Refresh" button from the popup — the list now updates on its own.
-- Removed the `activeTab` permission, which was unused.
+- Access to `http`/`https` pages only, used solely to inject the muting script into tabs you have explicitly muted. The `favicon` permission serves tab icons from the browser's own cache, so opening the popup sends no request to the listed sites.
