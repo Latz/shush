@@ -22,8 +22,8 @@ jobs:
           node-version: '22'
       - run: npm ci
       # Before the tests: lint is seconds, so a style break fails fast rather than after
-      # the full suite. Note that no-unused-vars is a warning, and warnings do not fail
-      # eslint — add --max-warnings 0 to the lint script if they should.
+      # the full suite. Every rule in eslint.config.js is error-level, so anything eslint
+      # reports fails this step.
       - run: npm run lint
       - run: npm run test:coverage
       - name: SonarQube Scan

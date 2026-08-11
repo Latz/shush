@@ -9,9 +9,10 @@ export default [
       globals: { ...globals.browser, ...globals.webextensions },
     },
     rules: {
-      // ignoreRestSiblings: `const { omitted, ...rest } = obj` is a deliberate way to drop a
-      // key, not an unused variable.
-      'no-unused-vars': ['warn', { ignoreRestSiblings: true }],
+      // error, not warn: eslint exits 0 on warnings, so as a warning this rule could never
+      // fail the CI lint step. ignoreRestSiblings keeps `const { omitted, ...rest } = obj`
+      // legal — that is a deliberate way to drop a key, not an unused variable.
+      'no-unused-vars': ['error', { ignoreRestSiblings: true }],
       'no-console': 'off',
       'prefer-const': 'error',
       'no-var': 'error',
