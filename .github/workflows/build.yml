@@ -21,6 +21,10 @@ jobs:
           # manifest.json declares as the minimum, so this is a test-runtime floor only.
           node-version: '22'
       - run: npm ci
+      # Before the tests: lint is seconds, so a style break fails fast rather than after
+      # the full suite. Note that no-unused-vars is a warning, and warnings do not fail
+      # eslint — add --max-warnings 0 to the lint script if they should.
+      - run: npm run lint
       - run: npm run test:coverage
       - name: SonarQube Scan
         uses: SonarSource/sonarqube-scan-action@fd88b7d7ccbaefd23d8f36f73b59db7a3d246602 # v6
