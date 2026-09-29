@@ -9,23 +9,37 @@ const tabDataMap = new Map();
 let loadFailed = false;
 
 /**
- * Detects a new browser session and clears stale saved tabs when one is found.
- * Skipped silently on browsers (e.g. Vivaldi) that don't support chrome.storage.session.
- * @returns {Promise<void>}
+ * Reads the session and stored nonces. Issued inside loadNoisyTabs' Promise.all so it costs no
+ * extra round-trip stage. Skipped silently on browsers (e.g. Vivaldi) that don't support
+ * chrome.storage.session — loadSavedTabs() verifies each tab via tabById there, so closed/invalid
+ * tabs from previous sessions are naturally filtered out without needing explicit cleanup.
+ * @returns {Promise<{sessionNonce?: string, storedNonce?: string}|null>} null when unsupported.
  */
-async function checkSessionNonce() {
-  if (!chrome.storage?.session) {
-    // session storage unavailable (e.g. Vivaldi) — skip nonce check.
-    // loadSavedTabs() verifies each tab via tabById, so closed/invalid tabs
-    // from previous sessions are naturally filtered out without needing explicit cleanup.
-    return;
-  }
-  const { sessionNonce } = await chrome.storage.session.get('sessionNonce');
-  const { shush_session_nonce: storedNonce } = await chrome.storage.local.get('shush_session_nonce');
-  if (!sessionNonce || sessionNonce !== storedNonce) {
-    await chrome.storage.local.remove('shush_saved_tabs');
-    chrome.storage.local.set({ shush_session_nonce: sessionNonce ?? '' });
-  }
+async function readSessionNonces() {
+  if (!chrome.storage?.session) return null;
+  const [{ sessionNonce }, { shush_session_nonce: storedNonce }] = await Promise.all([
+    chrome.storage.session.get('sessionNonce'),
+    chrome.storage.local.get('shush_session_nonce'),
+  ]);
+  return { sessionNonce, storedNonce };
+}
+
+/**
+ * Reports whether the saved tab list belongs to an earlier browser session and, if so, clears it.
+ * The storage writes are fire-and-forget: the caller has already dropped the stale list in memory.
+ * @param {{sessionNonce?: string, storedNonce?: string}|null} nonces
+ * @returns {boolean} true when the saved list is stale and must be ignored.
+ */
+function discardStaleSavedTabs(nonces) {
+  if (!nonces) return false;
+  const { sessionNonce, storedNonce } = nonces;
+  // No session nonce at all (e.g. session storage was cleared mid-session) means the session
+  // can't be told apart, so keep the list — loadSavedTabs() still filters out closed tabs.
+  if (!sessionNonce || sessionNonce === storedNonce) return false;
+  Promise.resolve(chrome.storage.local.remove('shush_saved_tabs'))
+    .then(() => chrome.storage.local.set({ shush_session_nonce: sessionNonce ?? '' }))
+    .catch(() => {});
+  return true;
 }
 
 /**
@@ -215,14 +229,15 @@ async function loadNoisyTabs() {
 
   try {
     loadFailed = false;
-    await checkSessionNonce();
 
-    const [[currentActiveTab], allTabs, bgMutedIds, savedData] = await Promise.all([
+    const [[currentActiveTab], allTabs, bgMutedIds, rawSavedData, nonces] = await Promise.all([
       chrome.tabs.query({ active: true, currentWindow: true }),
       chrome.tabs.query({}),
       chrome.runtime.sendMessage({ action: 'getShushMutedTabs' }).catch(() => []),
       chrome.storage.local.get('shush_saved_tabs'),
+      readSessionNonces(),
     ]);
+    const savedData = discardStaleSavedTabs(nonces) ? {} : rawSavedData;
 
     // Derived from allTabs rather than a second chrome.tabs.query({ audible: true }) —
     // the audible set is a strict subset, so the extra round-trip bought nothing.
@@ -294,7 +309,10 @@ function saveTabState() {
     favIconUrl: tab.favIconUrl,
     muted: tab.muted,
   })).toArray();
-  return chrome.storage.local.set({ shush_saved_tabs: toSave });
+  // Most callers fire and forget, so a failed write is logged here instead of surfacing as an
+  // unhandled rejection.
+  return chrome.storage.local.set({ shush_saved_tabs: toSave })
+    .catch(error => { console.error('Failed to save tab state:', error); });
 }
 
 // Best-effort backstop for state changed after the last eager save. pagehide rather than the
@@ -323,8 +341,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!tab) return;
 
     if (e.target.closest('.switch-btn')) {
-      await switchToTab(tab.id, tab.windowId);
-      window.close();
+      try {
+        await switchToTab(tab.id, tab.windowId);
+        window.close();
+      } catch (err) {
+        console.error('Switch failed:', err); // tab closed since the list was rendered
+      }
     } else {
       const muteBtn = e.target.closest('.mute-btn, .unmute-btn');
       if (!muteBtn) return;

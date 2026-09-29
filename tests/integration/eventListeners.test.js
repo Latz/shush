@@ -66,6 +66,36 @@ describe('runtime.onStartup listener', () => {
     const listener = chrome.runtime.onStartup.addListener.mock.calls[0][0];
     expect(() => listener()).not.toThrow();
   });
+
+  test('clears persisted muted tabs, whose IDs are meaningless in a new browser session', async () => {
+    chrome.tabs.query.mockResolvedValue([]);
+    await background.restored;
+    background.shushMutedTabs.add(7);
+    const listener = chrome.runtime.onStartup.addListener.mock.calls[0][0];
+    await listener();
+    expect(background.shushMutedTabs.size).toBe(0);
+    expect(chrome.storage.local.set).toHaveBeenCalledWith({ shush_muted_tabs: [] });
+  });
+});
+
+describe('fetchNoisyData pruning', () => {
+  test('drops muted IDs whose tab no longer exists', async () => {
+    await background.restored;
+    background.shushMutedTabs.add(1);
+    background.shushMutedTabs.add(2);
+    chrome.tabs.query.mockResolvedValue([{ id: 1, url: 'https://a.com', audible: false }]);
+    await background.fetchNoisyData();
+    expect([...background.shushMutedTabs]).toEqual([1]);
+    expect(chrome.storage.local.set).toHaveBeenCalledWith({ shush_muted_tabs: [1] });
+  });
+});
+
+describe('runtime.onMessage listener', () => {
+  test('ignores malformed messages without throwing', () => {
+    const listener = chrome.runtime.onMessage.addListener.mock.calls[0][0];
+    expect(() => listener(undefined, {}, vi.fn())).not.toThrow();
+    expect(() => listener(null, {}, vi.fn())).not.toThrow();
+  });
 });
 
 describe('tabs.onRemoved listener', () => {
@@ -77,8 +107,49 @@ describe('tabs.onRemoved listener', () => {
     expect(shushMutedTabs.has(5)).toBe(false);
   });
 
+  test('persists only when the closed tab was shush-muted', async () => {
+    const { shushMutedTabs } = background;
+    const listener = chrome.tabs.onRemoved.addListener.mock.calls[0][0];
+    chrome.storage.local.set.mockClear();
+    await listener(12345);
+    expect(chrome.storage.local.set).not.toHaveBeenCalled();
+    shushMutedTabs.add(5);
+    await listener(5);
+    expect(chrome.storage.local.set).toHaveBeenCalledWith({ shush_muted_tabs: [] });
+  });
+
   test('schedules an update when a tab is closed', async () => {
     const listener = chrome.tabs.onRemoved.addListener.mock.calls[0][0];
     await expect(listener(99)).resolves.not.toThrow();
+  });
+});
+
+describe('scheduleUpdate durability', () => {
+  test('marks an update pending in session storage and clears it once the update ran', async () => {
+    vi.useFakeTimers();
+    try {
+      chrome.tabs.query.mockResolvedValue([]);
+      background.scheduleUpdate();
+      expect(chrome.storage.session.set).toHaveBeenCalledWith({ shush_update_pending: true });
+      await vi.advanceTimersByTimeAsync(200);
+      expect(chrome.storage.session.remove).toHaveBeenCalledWith('shush_update_pending');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('replays an update left pending by a terminated worker', async () => {
+    vi.useFakeTimers();
+    try {
+      globalThis.setupChromeMock();
+      chrome.storage.session.get.mockResolvedValue({ shush_update_pending: true });
+      chrome.tabs.query.mockResolvedValue([]);
+      vi.resetModules();
+      await import('../../background.js');
+      await vi.advanceTimersByTimeAsync(300);
+      expect(chrome.tabs.query).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

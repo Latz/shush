@@ -50,6 +50,7 @@ function setupChromeMock() {
       session: {
         get: vi.fn().mockResolvedValue({}),
         set: vi.fn().mockResolvedValue(undefined),
+        remove: vi.fn().mockResolvedValue(undefined),
       },
     },
   };

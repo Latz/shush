@@ -3,7 +3,7 @@ import { applyMediaMute } from './shared/media-mute.js';
 
 // Handle mute requests from popup (avoids popup-context revert behaviour)
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message.action === 'muteTab') {
+  if (message?.action === 'muteTab') {
     const { tabId, muted } = message;
     if (!Number.isInteger(tabId) || tabId <= 0 || typeof muted !== 'boolean') {
       // Answer explicitly: returning without a response closes the port and surfaces
@@ -30,7 +30,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       }
     })();
     return true; // keep channel open for async response
-  } else if (message.action === 'getShushMutedTabs') {
+  } else if (message?.action === 'getShushMutedTabs') {
     // Must await `restored`: a message can be the very event that woke the worker, in which
     // case the set is still empty and the popup would render nothing as muted.
     restored.then(() => sendResponse([...shushMutedTabs]));
@@ -105,7 +105,8 @@ function saveShushMutedTabs() {
 const restored = (async () => {
   const result = await chrome.storage.local.get('shush_muted_tabs');
   if (Array.isArray(result?.shush_muted_tabs)) {
-    result.shush_muted_tabs.forEach(id => shushMutedTabs.add(id));
+    // Storage is an external input: keep only well-formed tab IDs.
+    result.shush_muted_tabs.filter(id => Number.isInteger(id) && id > 0).forEach(id => shushMutedTabs.add(id));
   }
 })().catch((error) => {
   // Must never reject: every entry point awaits this, and most of them are listeners with
@@ -114,14 +115,57 @@ const restored = (async () => {
   console.error('Failed to restore muted tabs:', error);
 });
 
+// Session-storage flag marking a scheduled update that has not finished yet.
+const UPDATE_PENDING_KEY = 'shush_update_pending';
+
 // Single debounced update replacing scheduleBadgeUpdate + scheduleMenuUpdate
 let updateTimeout;
-/** Queues a context menu rebuild; resets the timer on each call (150 ms debounce). */
+let updatePending = false;
+
+/** Best-effort session-storage write; absent (e.g. Vivaldi) or failing storage just loses the recovery. */
+function setUpdatePendingFlag(pending) {
+  const session = chrome.storage.session;
+  if (!session) return;
+  const op = pending ? session.set({ [UPDATE_PENDING_KEY]: true }) : session.remove(UPDATE_PENDING_KEY);
+  Promise.resolve(op).catch(() => {});
+}
+
+/**
+ * Queues a context menu rebuild; resets the timer on each call (150 ms debounce).
+ * A pending setTimeout does not keep an MV3 service worker alive, so a worker terminated inside
+ * the debounce window would silently drop the update. The pending state is therefore mirrored to
+ * session storage and replayed on the next worker start (see recoverPendingUpdate).
+ */
 function scheduleUpdate() {
   clearTimeout(updateTimeout);
+  if (!updatePending) {
+    updatePending = true;
+    setUpdatePendingFlag(true);
+  }
   // 150ms: snapshot diffing in updateAll makes no-op calls near-free, so debounce can be short
-  updateTimeout = setTimeout(() => updateAll(), 150);
+  updateTimeout = setTimeout(async () => {
+    updatePending = false;
+    try {
+      await updateAll();
+    } catch (error) {
+      console.error('Scheduled update failed:', error);
+    } finally {
+      // A schedule that arrived while the update ran owns the flag now; only clear it if none did.
+      if (!updatePending) setUpdatePendingFlag(false);
+    }
+  }, 150);
 }
+
+/** Runs once per worker start: replays an update the previous worker was killed before running. */
+async function recoverPendingUpdate() {
+  try {
+    const result = await chrome.storage.session?.get(UPDATE_PENDING_KEY);
+    if (result?.[UPDATE_PENDING_KEY]) scheduleUpdate();
+  } catch {
+    // storage.session unavailable — nothing to recover
+  }
+}
+recoverPendingUpdate();
 
 // Snapshot of the last menu render — used to skip redundant full rebuilds
 // null, not '': an empty noisy-tab list snapshots to the empty string, so a string sentinel
@@ -204,17 +248,26 @@ chrome.contextMenus.onClicked.addListener(async (info) => {
   if (!action) return; // click on a noisy-tab-N parent label (current tab or background tab title)
 
   const tabId = Number(action[1]);
-  if (action[2] === 'switch') {
-    await switchToTab(tabId);
-  } else {
-    await handleMuteToggle(tabId);
+  try {
+    if (action[2] === 'switch') {
+      await switchToTab(tabId);
+    } else {
+      await handleMuteToggle(tabId);
+    }
+  } catch (error) {
+    // e.g. the tab was closed between the menu render and the click
+    console.error('Context menu action failed:', error);
   }
 });
 
 chrome.commands.onCommand.addListener(async (command) => {
   if (command !== 'toggle-mute-current') return;
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (tab) await handleMuteToggle(tab.id);
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab) await handleMuteToggle(tab.id);
+  } catch (error) {
+    console.error('Mute shortcut failed:', error);
+  }
 });
 
 // Background service worker for Shush! extension
@@ -243,8 +296,15 @@ chrome.runtime.onInstalled.addListener(() => {
   updateAll();
 });
 
-chrome.runtime.onStartup.addListener(() => {
+chrome.runtime.onStartup.addListener(async () => {
   chrome.storage.session?.set({ sessionNonce: crypto.randomUUID() });
+  // Tab IDs are not stable across browser restarts: a persisted ID would now point at an
+  // unrelated tab and show it as muted. Start every browser session with an empty set.
+  await restored;
+  if (shushMutedTabs.size > 0) {
+    shushMutedTabs.clear();
+    saveShushMutedTabs();
+  }
   updateAll();
 });
 
@@ -254,8 +314,8 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
   // Await the restore before deleting + saving, or a close that woke the worker would
   // persist an empty set over the real one.
   await restored;
-  shushMutedTabs.delete(tabId);
-  saveShushMutedTabs();
+  // Most closed tabs were never shush-muted; skip the storage write for those.
+  if (shushMutedTabs.delete(tabId)) saveShushMutedTabs();
   scheduleUpdate();
 });
 
@@ -294,6 +354,24 @@ chrome.tabs.onActivated.addListener(() => {
 });
 
 /**
+ * Drops shushMutedTabs entries whose tab no longer exists (missed onRemoved, e.g. while the
+ * worker was down), so they can neither linger in storage nor match a recycled ID.
+ * @param {chrome.tabs.Tab[]} allTabs - The full chrome.tabs.query({}) result.
+ */
+function pruneClosedMutedTabs(allTabs) {
+  const openIds = new Set(allTabs.map(t => t.id));
+  let changed = false;
+  for (const id of shushMutedTabs) {
+    if (!openIds.has(id)) {
+      shushMutedTabs.delete(id);
+      lastInjectAt.delete(id);
+      changed = true;
+    }
+  }
+  if (changed) saveShushMutedTabs();
+}
+
+/**
  * Fetches the noisy tabs and the focused active tab, then derives the noisy-tab list locally.
  * Exactly one tab query is issued, chosen up front: the full chrome.tabs.query({}) is the only
  * way to resolve muted (and therefore no longer audible) tabs without one chrome.tabs.get() per
@@ -309,6 +387,7 @@ async function fetchNoisyData() {
     needsAllTabs ? chrome.tabs.query({}) : chrome.tabs.query({ audible: true }),
     chrome.tabs.query({ active: true, lastFocusedWindow: true })
   ]);
+  if (needsAllTabs) pruneClosedMutedTabs(tabs);
   const noisyTabs = needsAllTabs
     ? tabs.filter(t => t.audible || shushMutedTabs.has(t.id))
     : tabs;

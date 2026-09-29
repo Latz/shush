@@ -280,7 +280,9 @@ describe('popup storage — loadSavedTabs', () => {
   test('returns saved muted tabs from chrome.storage.local', async () => {
     const savedTab = { tabId: 7, muted: true };
     const tab7 = { id: 7, windowId: 2, url: 'https://saved.com', title: 'Saved', favIconUrl: '' };
-    chrome.storage.local.get.mockResolvedValue({ shush_saved_tabs: [savedTab] });
+    // Matching nonces: the saved list belongs to the current session, so it must be honoured.
+    chrome.storage.session.get.mockResolvedValue({ sessionNonce: 'n' });
+    chrome.storage.local.get.mockResolvedValue({ shush_saved_tabs: [savedTab], shush_session_nonce: 'n' });
     await loadPopup([], DEFAULT_ACTIVE_TAB, [tab7]);
     expect(document.querySelectorAll('.unmute-btn').length).toBe(1);
   });
@@ -312,6 +314,15 @@ describe('popup storage — checkSessionNonce', () => {
     expect(chrome.storage.local.set).toHaveBeenCalledWith(
       expect.objectContaining({ shush_session_nonce: 'new-nonce' })
     );
+  });
+
+  test('keeps saved tabs when no session nonce exists', async () => {
+    const tab7 = { id: 7, windowId: 2, url: 'https://saved.com', title: 'Saved', favIconUrl: '' };
+    chrome.storage.session.get.mockResolvedValue({});
+    chrome.storage.local.get.mockResolvedValue({ shush_saved_tabs: [{ tabId: 7, muted: true }] });
+    await loadPopup([], DEFAULT_ACTIVE_TAB, [tab7]);
+    expect(chrome.storage.local.remove).not.toHaveBeenCalled();
+    expect(document.querySelectorAll('.unmute-btn').length).toBe(1);
   });
 
   test('skips nonce check when chrome.storage.session is unavailable', async () => {
