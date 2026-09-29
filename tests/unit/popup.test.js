@@ -46,13 +46,13 @@ async function loadPopup(audibleTabs = [], activeTab = DEFAULT_ACTIVE_TAB, allTa
 describe('loadNoisyTabs', () => {
   test('shows no-audio message when no tabs are audible', async () => {
     await loadPopup([]);
-    expect(document.getElementById('content').innerHTML).toContain('noAudio');
+    expect(document.querySelector('#content').innerHTML).toContain('noAudio');
   });
 
   test('shows current-tab message when only the active tab is audible', async () => {
     const active = { id: 1, url: 'https://current.com', title: 'Current' };
     await loadPopup([active], active);
-    expect(document.getElementById('content').innerHTML).toContain('audioCurrentTab');
+    expect(document.querySelector('#content').innerHTML).toContain('audioCurrentTab');
   });
 
   test('survives sendMessage resolving undefined (no background listener)', async () => {
@@ -73,7 +73,7 @@ describe('loadNoisyTabs', () => {
   test('skips tabs without http(s) URLs', async () => {
     const chromeTab = { id: 3, url: 'chrome://newtab', title: 'New Tab' };
     await loadPopup([chromeTab]);
-    expect(document.getElementById('content').innerHTML).toContain('noAudio');
+    expect(document.querySelector('#content').innerHTML).toContain('noAudio');
   });
 
   test('shows unmute button for muted tabs', async () => {
@@ -108,7 +108,7 @@ describe('loadNoisyTabs', () => {
     chrome.tabs.query.mockRejectedValue(new Error('API error'));
     await importPopupAndInit();
     await new Promise(r => setTimeout(r, 50));
-    expect(document.getElementById('content').innerHTML).toContain('errorLoadTabs');
+    expect(document.querySelector('#content').innerHTML).toContain('errorLoadTabs');
   });
 
   test('switch button activates the tab, focuses its window, and closes the popup', async () => {
@@ -216,19 +216,19 @@ describe('loadNoisyTabs', () => {
 describe('Mute All', () => {
   test('button is hidden when there are no noisy tabs', async () => {
     await loadPopup([]);
-    expect(document.getElementById('mute-all-btn').hidden).toBe(true);
+    expect(document.querySelector('#mute-all-btn').hidden).toBe(true);
   });
 
   test('button is visible when there is at least one unmuted background tab', async () => {
     const bgTab = { id: 2, url: 'https://music.com', title: 'Music', favIconUrl: '', mutedInfo: { muted: false } };
     await loadPopup([bgTab]);
-    expect(document.getElementById('mute-all-btn').hidden).toBe(false);
+    expect(document.querySelector('#mute-all-btn').hidden).toBe(false);
   });
 
   test('button is hidden when all background tabs are already muted', async () => {
     const mutedTab = { id: 2, url: 'https://music.com', title: 'Music', favIconUrl: '', mutedInfo: { muted: true } };
     await loadPopup([mutedTab]);
-    expect(document.getElementById('mute-all-btn').hidden).toBe(true);
+    expect(document.querySelector('#mute-all-btn').hidden).toBe(true);
   });
 
   test('clicking sends one muteTab message per unmuted tab, none for already-muted tabs', async () => {
@@ -239,7 +239,7 @@ describe('Mute All', () => {
       return Promise.resolve({ muted: true });
     });
     await loadPopup([unmuted, muted]);
-    document.getElementById('mute-all-btn').click();
+    document.querySelector('#mute-all-btn').click();
     await new Promise(r => setTimeout(r, 50));
     expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'muteTab', tabId: 2, muted: true })
@@ -269,10 +269,10 @@ describe('Mute All', () => {
     await importPopupAndInit();
     await new Promise(r => setTimeout(r, 50));
 
-    document.getElementById('mute-all-btn').click();
+    document.querySelector('#mute-all-btn').click();
     await new Promise(r => setTimeout(r, 50));
     expect(document.querySelectorAll('.unmute-btn').length).toBe(1);
-    expect(document.getElementById('mute-all-btn').hidden).toBe(true);
+    expect(document.querySelector('#mute-all-btn').hidden).toBe(true);
   });
 });
 
@@ -290,7 +290,7 @@ describe('popup storage — loadSavedTabs', () => {
   test('returns empty array when no saved tabs in storage', async () => {
     chrome.storage.local.get.mockResolvedValue({});
     await loadPopup([]);
-    expect(document.getElementById('content').innerHTML).toContain('noAudio');
+    expect(document.querySelector('#content').innerHTML).toContain('noAudio');
   });
 
   test('excludes saved tabs where the tab no longer exists', async () => {
@@ -298,7 +298,7 @@ describe('popup storage — loadSavedTabs', () => {
     chrome.storage.local.get.mockResolvedValue({ shush_saved_tabs: [savedTab] });
     // Tab 99 not in allTabs → tabById.has(99) is false → excluded
     await loadPopup([], DEFAULT_ACTIVE_TAB, []);
-    expect(document.getElementById('content').innerHTML).toContain('noAudio');
+    expect(document.querySelector('#content').innerHTML).toContain('noAudio');
   });
 });
 
@@ -330,7 +330,7 @@ describe('popup storage — checkSessionNonce', () => {
     chrome.storage = storageWithoutSession;
     await loadPopup([]);
     // Should not throw and should still render normally
-    expect(document.getElementById('content')).not.toBeNull();
+    expect(document.querySelector('#content')).not.toBeNull();
   });
 });
 

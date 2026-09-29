@@ -30,12 +30,15 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       }
     })();
     return true; // keep channel open for async response
-  } else if (message?.action === 'getShushMutedTabs') {
-    // Must await `restored`: a message can be the very event that woke the worker, in which
-    // case the set is still empty and the popup would render nothing as muted.
-    restored.then(() => sendResponse([...shushMutedTabs]));
-    return true; // keep channel open for async response
   }
+  if (message?.action !== 'getShushMutedTabs') {
+    return;
+  }
+
+  // Must await `restored`: a message can be the very event that woke the worker, in which
+  // case the set is still empty and the popup would render nothing as muted.
+  restored.then(() => sendResponse([...shushMutedTabs])).catch(() => sendResponse([]));
+  return true; // keep channel open for async response
 });
 
 // Timestamp of the last injection per tab, used by reinjectMediaMute to skip redundant
@@ -160,7 +163,8 @@ function scheduleUpdate() {
 async function recoverPendingUpdate() {
   try {
     const result = await chrome.storage.session?.get(UPDATE_PENDING_KEY);
-    if (result?.[UPDATE_PENDING_KEY]) scheduleUpdate();
+    const pending = result?.[UPDATE_PENDING_KEY];
+    if (pending) scheduleUpdate();
   } catch {
     // storage.session unavailable — nothing to recover
   }
@@ -327,15 +331,15 @@ try {
     if (changeInfo.status === 'complete' && shushMutedTabs.has(tabId)) {
       injectMediaMute(tabId, true);
     }
-    if (changeInfo.audible !== undefined) {
-      scheduleUpdate();
-      if (changeInfo.audible === true && shushMutedTabs.has(tabId)) {
-        reinjectMediaMute(tabId);
-      }
+    if (changeInfo.audible === undefined) return;
+    scheduleUpdate();
+    if (changeInfo.audible === true && shushMutedTabs.has(tabId)) {
+      reinjectMediaMute(tabId);
     }
+  // @ts-expect-error -- the event-filter argument is missing from @types/chrome; the catch below covers browsers that reject it
   }, { properties: ['audible', 'status'] });
-} catch (e) {
-  console.debug('Event filter not supported, falling back to unfiltered listener:', e);
+} catch (error) {
+  console.debug('Event filter not supported, falling back to unfiltered listener:', error);
   chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
     await restored;
     if (changeInfo.status === 'complete' && shushMutedTabs.has(tabId)) {
@@ -362,11 +366,13 @@ function pruneClosedMutedTabs(allTabs) {
   const openIds = new Set(allTabs.map(t => t.id));
   let changed = false;
   for (const id of shushMutedTabs) {
-    if (!openIds.has(id)) {
-      shushMutedTabs.delete(id);
-      lastInjectAt.delete(id);
-      changed = true;
+    if (openIds.has(id)) {
+      continue;
     }
+
+    shushMutedTabs.delete(id);
+    lastInjectAt.delete(id);
+    changed = true;
   }
   if (changed) saveShushMutedTabs();
 }
@@ -552,7 +558,7 @@ function logContextMenuError() {
  */
 function tabMenuTitle(tab) {
   const cleanTitle = tab.title.replace(/^\(\d+\)\s*/, '');
-  const tabTitle = cleanTitle.length > 30 ? cleanTitle.substring(0, 27) + '...' : cleanTitle;
+  const tabTitle = cleanTitle.length > 30 ? cleanTitle.slice(0, 27) + '...' : cleanTitle;
   const currentLabel = tab.isCurrentTab ? ` ${chrome.i18n.getMessage('menuCurrentTab')}` : '';
   const mutedLabel = tab.muted ? ` ${chrome.i18n.getMessage('menuMuted')}` : '';
   return `${tabTitle}${currentLabel}${mutedLabel}`;

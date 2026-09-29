@@ -32,6 +32,7 @@ CLAUDE.local.md
 enhancements.md
 
 # Environment variables (secrets)
+.env
 .envrc
 
 # Git worktrees
@@ -49,3 +50,6 @@ sonar-issues.md
 *_review*.md
 code_review*.md
 performance_review*.md
+
+# Stryker
+.stryker-tmp/

@@ -9,14 +9,36 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "lint": "eslint .",
-    "lint:json": "eslint --format json ."
+    "lint:json": "eslint --format json .",
+    "typecheck": "tsc -p tsconfig.json",
+    "lint:ext": "node bin/lint-ext.mjs",
+    "audit": "npm audit --audit-level=high",
+    "lint:css": "stylelint popup.css",
+    "lint:html": "html-validate popup.html PRIVACY_POLICY.html",
+    "sonar": "sonar-scanner-npm",
+    "test:a11y": "vitest run --config vitest.a11y.config.js"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@eslint/js": "^10.0.1",
+    "@sonar/scan": "^5.0.1",
+    "@stryker-mutator/core": "^10.0.0",
+    "@stryker-mutator/vitest-runner": "^10.0.0",
+    "@types/chrome": "^0.3.4",
     "@vitest/coverage-v8": "^3.2.4",
+    "axe-core": "^4.13.0",
     "eslint": "^10.4.1",
+    "eslint-plugin-promise": "^7.3.0",
+    "eslint-plugin-sonarjs": "^4.2.2",
+    "eslint-plugin-unicorn": "^76.0.0",
     "globals": "^17.6.0",
+    "html-validate": "^11.16.1",
     "jsdom": "^28.1.0",
-    "vitest": "^3.0.0"
+    "playwright-core": "^1.63.0",
+    "stylelint": "^17.15.0",
+    "stylelint-config-standard": "^40.0.0",
+    "typescript": "~6.0.3",
+    "vitest": "^3.0.0",
+    "web-ext": "^10.7.0"
   }
 }
