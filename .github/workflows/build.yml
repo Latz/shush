@@ -25,9 +25,37 @@ jobs:
       # the full suite. Every rule in eslint.config.js is error-level, so anything eslint
       # reports fails this step.
       - run: npm run lint
+      # Popup CSS and HTML (popup.html, PRIVACY_POLICY.html), also cheap enough to run before tests.
+      - run: npm run lint:css
+      - run: npm run lint:html
+      # tsc --checkJs against @types/chrome; catches wrong chrome.* calls before the tests do.
+      - run: npm run typecheck
+      # Manifest/locale validation. bin/lint-ext.mjs ignores the Firefox-only findings.
+      - run: npm run lint:ext
+      # High/critical only: the remaining moderate advisories are in dev tooling (vitest).
+      - run: npm run audit
       - run: npm run test:coverage
+      # axe-core in a real browser: colour contrast (light and dark) and ARIA need layout, which
+      # jsdom does not have. Chromium is downloaded per run; --with-deps adds its system libs.
+      - run: npx playwright-core install --with-deps chromium
+      - run: npm run test:a11y
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: SonarQube Scan
         uses: SonarSource/sonarqube-scan-action@fd88b7d7ccbaefd23d8f36f73b59db7a3d246602 # v6
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          
+  semgrep:
+    name: Semgrep
+    runs-on: ubuntu-latest
+    # Official image, so nothing is pip-installed on the runner. Locally, bin/check.js runs
+    # the same scan with a pip-installed semgrep.
+    container:
+      image: semgrep/semgrep
+    steps:
+      - uses: actions/checkout@v4
+      # --error: exit non-zero on any finding, so it can fail the job. Complements Sonar with
+      # pattern rules for innerHTML, eval and similar sinks. Tests are not shipped code.
+      - run: semgrep scan --config p/javascript --error --metrics=off background.js popup.js shared

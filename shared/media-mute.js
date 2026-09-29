@@ -36,7 +36,7 @@ export function applyMediaMute(m) {
   }
   globalThis.__shushActive = m;
 
-  document.querySelectorAll('audio, video').forEach(el => {
+  document.querySelectorAll('audio, video').forEach(/** @param {HTMLMediaElement} el */ el => {
     el.muted = m;
     if (!m && el.paused && !el.ended) el.play().catch(() => {});
   });
@@ -47,10 +47,11 @@ export function applyMediaMute(m) {
         for (const mutation of mutations) {
           for (const node of mutation.addedNodes) {
             if (node.nodeType !== Node.ELEMENT_NODE) continue;
-            if (node.matches('audio, video')) {
-              node.muted = true;
+            const element = /** @type {HTMLMediaElement} */ (node);
+            if (element.matches('audio, video')) {
+              element.muted = true;
             } else {
-              node.querySelectorAll('audio, video').forEach(el => { el.muted = true; });
+              element.querySelectorAll('audio, video').forEach(/** @param {HTMLMediaElement} el */ el => { el.muted = true; });
             }
           }
         }

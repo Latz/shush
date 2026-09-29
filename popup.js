@@ -21,7 +21,7 @@ async function readSessionNonces() {
     chrome.storage.session.get('sessionNonce'),
     chrome.storage.local.get('shush_session_nonce'),
   ]);
-  return { sessionNonce, storedNonce };
+  return { sessionNonce: /** @type {string} */ (sessionNonce), storedNonce: /** @type {string} */ (storedNonce) };
 }
 
 /**
@@ -70,7 +70,7 @@ function showMessage(text) {
   const message = document.createElement('div');
   message.className = 'no-tabs';
   message.textContent = text;
-  document.getElementById('content').replaceChildren(message);
+  document.querySelector('#content').replaceChildren(message);
 }
 
 /**
@@ -126,7 +126,7 @@ function faviconUrl(pageUrl) {
   const url = new URL(chrome.runtime.getURL('/_favicon/'));
   url.searchParams.set('pageUrl', pageUrl);
   url.searchParams.set('size', '32');
-  return url.toString();
+  return url.href;
 }
 
 /**
@@ -134,13 +134,15 @@ function faviconUrl(pageUrl) {
  * Also resets its label/disabled state, so a single call after any render is enough.
  */
 function updateMuteAllButton() {
-  const btn = document.getElementById('mute-all-btn');
+  const btn = /** @type {HTMLButtonElement} */ (document.querySelector('#mute-all-btn'));
   const hasUnmuted = tabDataMap.values().some(tab => !tab.muted);
   btn.hidden = !hasUnmuted;
-  if (hasUnmuted) {
-    btn.disabled = false;
-    btn.textContent = chrome.i18n.getMessage('btnMuteAll');
+  if (!hasUnmuted) {
+    return;
   }
+
+  btn.disabled = false;
+  btn.textContent = chrome.i18n.getMessage('btnMuteAll');
 }
 
 /**
@@ -161,23 +163,23 @@ async function muteAllVisibleTabs() {
 /**
  * Replaces #content with a tab item for each entry in noisyTabsList.
  * Populates tabDataMap so the delegated click listener can resolve tab objects by ID.
- * @param {Array<{id: number, windowId: number, title: string, favIconUrl: string, muted: boolean}>} noisyTabsList
+ * @param {Array<{id: number, windowId: number, title: string, url: string, favIconUrl: string, muted: boolean}>} noisyTabsList
  */
 function renderTabs(noisyTabsList) {
   tabDataMap.clear();
   noisyTabsList.forEach(tab => { tabDataMap.set(tab.id, tab); });
 
-  const content = document.getElementById('content');
+  const content = document.querySelector('#content');
   // Build off-document, then attach once — #content stays in the live tree, so appending each
   // item directly would touch the rendered DOM once per tab instead of once per render.
   const fragment = document.createDocumentFragment();
   noisyTabsList.forEach(tab => {
     const cleanTitle = cleanTabTitle(tab.title);
-    const tabTitle = cleanTitle.length > 30 ? cleanTitle.substring(0, 27) + '...' : cleanTitle;
+    const tabTitle = cleanTitle.length > 30 ? cleanTitle.slice(0, 27) + '...' : cleanTitle;
 
     const item = document.createElement('div');
     item.className = 'tab-item';
-    item.dataset.tabId = tab.id;
+    item.dataset.tabId = String(tab.id);
 
     // Still gated on the tab actually having a favicon, so tabs without one keep rendering
     // without an image rather than picking up Chrome's placeholder globe.
@@ -187,14 +189,14 @@ function renderTabs(noisyTabsList) {
       img.className = 'tab-favicon';
       img.alt = '';
       img.src = faviconSrc;
-      item.appendChild(img);
+      item.append(img);
     }
 
     const titleDiv = document.createElement('div');
     titleDiv.className = 'tab-title';
     titleDiv.title = cleanTitle;
     titleDiv.textContent = tabTitle;
-    item.appendChild(titleDiv);
+    item.append(titleDiv);
 
     const actions = document.createElement('div');
     actions.className = 'tab-actions';
@@ -204,19 +206,50 @@ function renderTabs(noisyTabsList) {
     switchBtn.textContent = chrome.i18n.getMessage('btnSwitch');
     // The visible label is the same on every row, so name the target tab for screen readers.
     switchBtn.setAttribute('aria-label', `${chrome.i18n.getMessage('btnSwitch')}: ${cleanTitle}`);
-    actions.appendChild(switchBtn);
+    actions.append(switchBtn);
 
     const muteBtn = document.createElement('button');
     setMuteButtonState(muteBtn, tab.muted, cleanTitle);
-    actions.appendChild(muteBtn);
+    actions.append(muteBtn);
 
-    item.appendChild(actions);
-    fragment.appendChild(item);
+    item.append(actions);
+    fragment.append(item);
   });
   content.replaceChildren(fragment);
 
   updateMuteAllButton();
   saveTabState();
+}
+
+/**
+ * Merges the audible, saved and background-muted tabs into one list, first source wins.
+ * Displayable = a real web page that is not the tab the user is already looking at.
+ * @param {chrome.tabs.Tab[]} audibleTabs
+ * @param {chrome.tabs.Tab[]} savedMutedTabs
+ * @param {chrome.tabs.Tab[]} bgMutedTabs
+ * @param {number|undefined} activeTabId
+ * @returns {{allDisplayedTabs: ReturnType<typeof toDisplayTab>[], totalAudioTabs: number}}
+ *   totalAudioTabs counts audible web pages including the active one, to tell "no audio
+ *   anywhere" from "audio, but only where you already are".
+ */
+function mergeDisplayTabs(audibleTabs, savedMutedTabs, bgMutedTabs, activeTabId) {
+  const isDisplayable = tab => tab.id !== activeTabId && tab.url?.startsWith('http');
+  // One insertion-ordered Map replaces the previous three filter/map passes and the two
+  // intermediate id Sets: the merge is strictly first-wins, which `has` expresses directly.
+  const byId = new Map();
+  let totalAudioTabs = 0;
+  for (const tab of audibleTabs) {
+    if (!tab.url?.startsWith('http')) continue;
+    totalAudioTabs++;
+    if (isDisplayable(tab)) byId.set(tab.id, toDisplayTab(tab));
+  }
+  for (const tab of savedMutedTabs) {
+    if (isDisplayable(tab) && !byId.has(tab.id)) byId.set(tab.id, toDisplayTab(tab));
+  }
+  for (const tab of bgMutedTabs) {
+    if (isDisplayable(tab) && !byId.has(tab.id)) byId.set(tab.id, toDisplayTab(tab, true));
+  }
+  return { allDisplayedTabs: byId.values().toArray(), totalAudioTabs };
 }
 
 /**
@@ -253,27 +286,8 @@ async function loadNoisyTabs() {
       .map(id => tabById.get(id))
       .filter(Boolean);
 
-    const activeTabId = currentActiveTab?.id;
-    /** Displayable = a real web page that is not the tab the user is already looking at. */
-    const isDisplayable = tab => tab.id !== activeTabId && tab.url?.startsWith('http');
-
-    // One insertion-ordered Map replaces the previous three filter/map passes and the two
-    // intermediate id Sets: the merge is strictly first-wins, which `has` expresses directly.
-    const byId = new Map();
-    let totalAudioTabs = 0;
-    for (const tab of audibleTabs) {
-      if (!tab.url?.startsWith('http')) continue;
-      totalAudioTabs++;
-      if (isDisplayable(tab)) byId.set(tab.id, toDisplayTab(tab));
-    }
-    for (const tab of savedMutedTabs) {
-      if (isDisplayable(tab) && !byId.has(tab.id)) byId.set(tab.id, toDisplayTab(tab));
-    }
-    for (const tab of bgMutedTabs) {
-      if (isDisplayable(tab) && !byId.has(tab.id)) byId.set(tab.id, toDisplayTab(tab, true));
-    }
-
-    const allDisplayedTabs = byId.values().toArray();
+    const { allDisplayedTabs, totalAudioTabs } = mergeDisplayTabs(
+      audibleTabs, savedMutedTabs, bgMutedTabs, currentActiveTab?.id);
 
     if (allDisplayedTabs.length > 0) {
       renderTabs(allDisplayedTabs);
@@ -325,8 +339,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // readers pronounce the localized strings properly.
   document.documentElement.lang = chrome.i18n.getUILanguage?.() ?? 'en';
 
-  const content = document.getElementById('content');
-  const muteAllBtn = document.getElementById('mute-all-btn');
+  const content = document.querySelector('#content');
+  const muteAllBtn = /** @type {HTMLButtonElement} */ (document.querySelector('#mute-all-btn'));
 
   muteAllBtn.addEventListener('click', async () => {
     muteAllBtn.disabled = true;
@@ -335,20 +349,21 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   content.addEventListener('click', async (e) => {
-    const item = e.target.closest('[data-tab-id]');
+    const target = /** @type {Element} */ (e.target);
+    const item = /** @type {HTMLElement|null} */ (target.closest('[data-tab-id]'));
     if (!item) return;
     const tab = tabDataMap.get(Number(item.dataset.tabId));
     if (!tab) return;
 
-    if (e.target.closest('.switch-btn')) {
+    if (target.closest('.switch-btn')) {
       try {
         await switchToTab(tab.id, tab.windowId);
         window.close();
-      } catch (err) {
-        console.error('Switch failed:', err); // tab closed since the list was rendered
+      } catch (error) {
+        console.error('Switch failed:', error); // tab closed since the list was rendered
       }
     } else {
-      const muteBtn = e.target.closest('.mute-btn, .unmute-btn');
+      const muteBtn = /** @type {HTMLButtonElement|null} */ (target.closest('.mute-btn, .unmute-btn'));
       if (!muteBtn) return;
       const title = cleanTabTitle(tab.title);
       const nowMuted = !tab.muted;
@@ -363,8 +378,8 @@ document.addEventListener('DOMContentLoaded', () => {
           tab.muted = actuallyMuted;
           setMuteButtonState(muteBtn, actuallyMuted, title);
         }
-      } catch (err) {
-        console.error('Mute failed:', err);
+      } catch (error) {
+        console.error('Mute failed:', error);
         // Revert optimistic update on error
         tab.muted = !nowMuted;
         setMuteButtonState(muteBtn, tab.muted, title);
@@ -377,8 +392,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Capture phase: error events don't bubble, so use capture to handle favicon load failures
   content.addEventListener('error', (e) => {
-    if (e.target.matches('.tab-favicon')) e.target.remove();
-  }, true);
+    const target = /** @type {Element} */ (e.target);
+    if (target.matches('.tab-favicon')) target.remove();
+  }, {capture: true});
 
   loadNoisyTabs();
 });
