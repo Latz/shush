@@ -14,7 +14,8 @@
  * 1. A one-time patch of HTMLMediaElement.prototype.muted, so a player that re-uses an
  *    existing element (Spotify and podcast players set `el.muted = false` between tracks)
  *    cannot un-mute out from under us.
- * 2. A direct pass over the elements present right now.
+ * 2. A direct pass over the elements present right now. On release each element gets back its
+ *    pre-mute muted/playing state rather than being forced audible and playing.
  * 3. A MutationObserver for elements added later. It inspects only the added nodes rather
  *    than re-scanning the document per batch — on churny pages (live chat, infinite scroll)
  *    nearly every batch contains no media, and a full querySelectorAll per batch is
@@ -36,9 +37,22 @@ export function applyMediaMute(m) {
   }
   globalThis.__shushActive = m;
 
+  // What each element looked like before we first muted it, so release restores that instead of
+  // forcing everything audible and playing. Recorded once per element: a re-run while muted
+  // would otherwise capture our own mute as the "original".
+  const prior = (globalThis.__shushPrior ??= new WeakMap());
   document.querySelectorAll('audio, video').forEach(/** @param {HTMLMediaElement} el */ el => {
-    el.muted = m;
-    if (!m && el.paused && !el.ended) el.play().catch(() => {});
+    if (m) {
+      if (!prior.has(el)) prior.set(el, { muted: el.muted, playing: !el.paused });
+      el.muted = true;
+      return;
+    }
+    const was = prior.get(el);
+    el.muted = was?.muted ?? false;
+    // Resume only what was playing before the mute and was paused since (players that pause
+    // while muted); never something the user had paused.
+    if (was?.playing && el.paused && !el.ended) el.play().catch(() => {});
+    prior.delete(el);
   });
 
   if (m) {
