@@ -36,7 +36,15 @@ jobs:
       - run: npm run audit
       - run: npm run test:coverage
       # axe-core in a real browser: colour contrast (light and dark) and ARIA need layout, which
-      # jsdom does not have. Chromium is downloaded per run; --with-deps adds its system libs.
+      # jsdom does not have. Chromium is cached per playwright-core version, so the ~150 MB download
+      # only happens when the lockfile moves; `install` below is then a no-op for the browser
+      # itself, and --with-deps still adds its system libs.
+      - id: playwright-version
+        run: echo "version=$(node -p "require('./package-lock.json').packages['node_modules/playwright-core'].version")" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
       - run: npx playwright-core install --with-deps chromium
       - run: npm run test:a11y
       - name: Gitleaks
