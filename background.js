@@ -1,5 +1,6 @@
 import { switchToTab } from './shared/vivaldi.js';
 import { applyMediaMute } from './shared/media-mute.js';
+import { cleanTabTitle, shortTitle, isWebTab } from './shared/tab-title.js';
 
 // Handle mute requests from popup (avoids popup-context revert behaviour)
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -14,14 +15,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     (async () => {
       try {
         await restored;
-        const tab = await chrome.tabs.update(tabId, { muted });
-        const actualMuted = tab.mutedInfo?.muted ?? muted;
-        injectMediaMute(tabId, actualMuted);
-        if (actualMuted) {
-          shushMutedTabs.add(tabId);
-        } else {
-          shushMutedTabs.delete(tabId);
-        }
+        const actualMuted = await muteOneTab(tabId, muted);
         saveShushMutedTabs();
         scheduleUpdate();
         sendResponse({ muted: actualMuted });
@@ -30,18 +24,61 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       }
     })();
     return true; // keep channel open for async response
-  } else if (message?.action === 'getShushMutedTabs') {
-    // Must await `restored`: a message can be the very event that woke the worker, in which
-    // case the set is still empty and the popup would render nothing as muted.
-    restored.then(() => sendResponse([...shushMutedTabs]));
+  }
+  if (message?.action === 'muteTabs') {
+    const { tabIds, muted } = message;
+    if (!Array.isArray(tabIds) || tabIds.some(id => !Number.isInteger(id) || id <= 0)
+        || typeof muted !== 'boolean') {
+      sendResponse({ error: 'invalid' });
+      return;
+    }
+    (async () => {
+      await restored;
+      // allSettled: one closed tab must not stop the rest. One save and one update for the
+      // whole batch instead of one per tab.
+      await Promise.allSettled(tabIds.map(id => muteOneTab(id, muted)));
+      saveShushMutedTabs();
+      scheduleUpdate();
+      sendResponse({ ok: true });
+    })();
     return true; // keep channel open for async response
   }
+  if (message?.action !== 'getShushMutedTabs') {
+    return;
+  }
+
+  // Must await `restored`: a message can be the very event that woke the worker, in which
+  // case the set is still empty and the popup would render nothing as muted.
+  restored.then(() => sendResponse([...shushMutedTabs])).catch(() => sendResponse([]));
+  return true; // keep channel open for async response
 });
+
+/**
+ * Mutes or unmutes one tab and records it in shushMutedTabs. Does not save or schedule an update:
+ * callers do that once, so a batch costs one write instead of one per tab.
+ * @param {number} tabId
+ * @param {boolean} muted
+ * @returns {Promise<boolean>} the mute state the browser reports afterwards.
+ */
+async function muteOneTab(tabId, muted) {
+  const tab = await chrome.tabs.update(tabId, { muted });
+  const actualMuted = tab.mutedInfo?.muted ?? muted;
+  injectMediaMute(tabId, actualMuted);
+  if (actualMuted) {
+    shushMutedTabs.add(tabId);
+  } else {
+    shushMutedTabs.delete(tabId);
+  }
+  return actualMuted;
+}
 
 // Timestamp of the last injection per tab, used by reinjectMediaMute to skip redundant
 // re-injections. Entries are dropped in tabs.onRemoved.
 const lastInjectAt = new Map();
-const REINJECT_COOLDOWN_MS = 1000;
+// The injected prototype patch and observer already hold the mute, so a re-run only helps
+// for frames added since; 10 s is plenty for that and keeps a tab that flips `audible` every
+// few seconds from re-running the script in every frame each time.
+const REINJECT_COOLDOWN_MS = 10_000;
 
 /**
  * Injects a content script (main world) that mutes/unmutes all audio and video elements in a tab.
@@ -160,7 +197,8 @@ function scheduleUpdate() {
 async function recoverPendingUpdate() {
   try {
     const result = await chrome.storage.session?.get(UPDATE_PENDING_KEY);
-    if (result?.[UPDATE_PENDING_KEY]) scheduleUpdate();
+    const pending = result?.[UPDATE_PENDING_KEY];
+    if (pending) scheduleUpdate();
   } catch {
     // storage.session unavailable — nothing to recover
   }
@@ -273,31 +311,13 @@ chrome.commands.onCommand.addListener(async (command) => {
 // Background service worker for Shush! extension
 
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.contextMenus.create({
-    id: "shush-menu",
-    title: "Shush!",
-    contexts: ["all"]
-  }, () => {
-    if (chrome.runtime.lastError) {
-      console.error('Error creating context menu:', chrome.runtime.lastError);
-    }
-  });
-  chrome.contextMenus.create({
-    id: "find-noisy-tabs",
-    parentId: "shush-menu",
-    title: chrome.i18n.getMessage('menuFindNoisyTabs'),
-    contexts: ["all"]
-  }, () => {
-    if (chrome.runtime.lastError) {
-      console.error('Error creating context menu:', chrome.runtime.lastError);
-    }
-  });
-  chrome.storage.session?.set({ sessionNonce: crypto.randomUUID() });
+  // Keys of the removed popup-side copy of the muted list; the background set is the only one now.
+  chrome.storage.local.remove(['shush_saved_tabs', 'shush_session_nonce']).catch(() => {});
+  // Menus do not survive an update or reload; the first update pass builds the base menu.
   updateAll();
 });
 
 chrome.runtime.onStartup.addListener(async () => {
-  chrome.storage.session?.set({ sessionNonce: crypto.randomUUID() });
   // Tab IDs are not stable across browser restarts: a persisted ID would now point at an
   // unrelated tab and show it as muted. Start every browser session with an empty set.
   await restored;
@@ -320,32 +340,32 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
 });
 
 // Track audio state and re-inject mute on navigation (mute is lost on page load in Vivaldi)
+async function onTabUpdated(tabId, changeInfo) {
+  await restored;
+  if (changeInfo.status === 'complete' && shushMutedTabs.has(tabId)) {
+    injectMediaMute(tabId, true);
+  }
+  // The user unmuted with the browser's own control (reason 'user'; our own updates report
+  // 'extension'): forget the tab and release the page-level hold, or it would still read as
+  // muted here and stay silenced in the page.
+  if (changeInfo.mutedInfo?.muted === false && changeInfo.mutedInfo.reason === 'user'
+      && shushMutedTabs.delete(tabId)) {
+    saveShushMutedTabs();
+    injectMediaMute(tabId, false);
+  }
+  if (changeInfo.audible !== undefined || changeInfo.mutedInfo !== undefined) scheduleUpdate();
+  if (changeInfo.audible === true && shushMutedTabs.has(tabId)) {
+    reinjectMediaMute(tabId);
+  }
+}
+
 // Use declarative event filter where supported; fall back to JS-side check (e.g. Vivaldi)
 try {
-  chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
-    await restored;
-    if (changeInfo.status === 'complete' && shushMutedTabs.has(tabId)) {
-      injectMediaMute(tabId, true);
-    }
-    if (changeInfo.audible !== undefined) {
-      scheduleUpdate();
-      if (changeInfo.audible === true && shushMutedTabs.has(tabId)) {
-        reinjectMediaMute(tabId);
-      }
-    }
-  }, { properties: ['audible', 'status'] });
-} catch (e) {
-  console.debug('Event filter not supported, falling back to unfiltered listener:', e);
-  chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
-    await restored;
-    if (changeInfo.status === 'complete' && shushMutedTabs.has(tabId)) {
-      injectMediaMute(tabId, true);
-    }
-    if (changeInfo.audible !== undefined) scheduleUpdate();
-    if (changeInfo.audible === true && shushMutedTabs.has(tabId)) {
-      reinjectMediaMute(tabId);
-    }
-  });
+  // @ts-expect-error -- the event-filter argument is missing from @types/chrome; the catch below covers browsers that reject it
+  chrome.tabs.onUpdated.addListener(onTabUpdated, { properties: ['audible', 'status', 'mutedInfo'] });
+} catch (error) {
+  console.debug('Event filter not supported, falling back to unfiltered listener:', error);
+  chrome.tabs.onUpdated.addListener(onTabUpdated);
 }
 
 // Listen for tab activation to update menu
@@ -354,63 +374,46 @@ chrome.tabs.onActivated.addListener(() => {
 });
 
 /**
- * Drops shushMutedTabs entries whose tab no longer exists (missed onRemoved, e.g. while the
- * worker was down), so they can neither linger in storage nor match a recycled ID.
- * @param {chrome.tabs.Tab[]} allTabs - The full chrome.tabs.query({}) result.
- */
-function pruneClosedMutedTabs(allTabs) {
-  const openIds = new Set(allTabs.map(t => t.id));
-  let changed = false;
-  for (const id of shushMutedTabs) {
-    if (!openIds.has(id)) {
-      shushMutedTabs.delete(id);
-      lastInjectAt.delete(id);
-      changed = true;
-    }
-  }
-  if (changed) saveShushMutedTabs();
-}
-
-/**
  * Fetches the noisy tabs and the focused active tab, then derives the noisy-tab list locally.
- * Exactly one tab query is issued, chosen up front: the full chrome.tabs.query({}) is the only
- * way to resolve muted (and therefore no longer audible) tabs without one chrome.tabs.get() per
- * tab, but it serializes every open tab — wasted payload on every scheduleUpdate() tick when
- * nothing is muted, where the far smaller audible-only query answers the same question.
+ * Audible tabs come from the small audible-only query; shush-muted tabs (no longer audible once
+ * muted) are fetched by ID — bounded by the muted count, usually 1-3 — instead of serialising
+ * every open tab with chrome.tabs.query({}) on every tab switch. A muted ID that no longer
+ * resolves is dropped (missed onRemoved, e.g. while the worker was down), so it can neither
+ * linger in storage nor match a recycled ID.
  * Shared by updateAll and scanAndShowResults to avoid duplicate queries.
  * @returns {Promise<{noisyTabs: chrome.tabs.Tab[], currentActiveTab: chrome.tabs.Tab|undefined}>}
  */
 async function fetchNoisyData() {
-  await restored; // shushMutedTabs picks the query below
-  const needsAllTabs = shushMutedTabs.size > 0;
-  const [tabs, [currentActiveTab]] = await Promise.all([
-    needsAllTabs ? chrome.tabs.query({}) : chrome.tabs.query({ audible: true }),
-    chrome.tabs.query({ active: true, lastFocusedWindow: true })
+  await restored; // shushMutedTabs picks the lookups below
+  const [audibleTabs, [currentActiveTab], mutedLookups] = await Promise.all([
+    chrome.tabs.query({ audible: true }),
+    chrome.tabs.query({ active: true, lastFocusedWindow: true }),
+    Promise.all([...shushMutedTabs].map(id =>
+      chrome.tabs.get(id).then(tab => ({ id, tab }), () => ({ id, tab: null }))))
   ]);
-  if (needsAllTabs) pruneClosedMutedTabs(tabs);
-  const noisyTabs = needsAllTabs
-    ? tabs.filter(t => t.audible || shushMutedTabs.has(t.id))
-    : tabs;
-  return { noisyTabs, currentActiveTab };
-}
 
-/**
- * Checks whether the menu can be updated in place rather than torn down and rebuilt:
- * the same tab IDs, in the same order, as what is currently rendered. Any insertion or removal
- * needs the full rebuild, since chrome.contextMenus offers no way to reorder existing items.
- * @param {Array<{id: number}>} noisyTabsList
- * @returns {boolean}
- */
-function canDiffMenu(noisyTabsList) {
-  return renderedTabs !== null
-    && renderedTabs.length === noisyTabsList.length
-    && renderedTabs.every((tab, i) => tab.id === noisyTabsList[i].id);
+  const byId = new Map(audibleTabs.map(t => [t.id, t]));
+  let pruned = false;
+  for (const { id, tab } of mutedLookups) {
+    if (!tab) {
+      shushMutedTabs.delete(id);
+      lastInjectAt.delete(id);
+      pruned = true;
+    } else if (!byId.has(tab.id)) {
+      byId.set(tab.id, tab);
+    }
+  }
+  if (pruned) saveShushMutedTabs();
+  // Same order query({}) gave: by window, then position, so a muted tab that turns audible
+  // again does not jump and force a menu rebuild.
+  const noisyTabs = byId.values().toArray()
+    .toSorted((x, y) => (x.windowId ?? 0) - (y.windowId ?? 0) || (x.index ?? 0) - (y.index ?? 0));
+  return { noisyTabs, currentActiveTab };
 }
 
 // Serializes every menu mutation. updateAll and scanAndShowResults are both async and both
 // rebuild the menu, and nothing stops a debounced update from overlapping a user-triggered
-// scan — interleaving two removeAll + rebuild sequences leaves renderedTabs describing a
-// menu that no longer matches, which then feeds a bad applyMenuDiff.
+// scan — interleaving two removeAll + rebuild sequences would leave a mixed-up menu.
 let menuWriteQueue = Promise.resolve();
 
 /**
@@ -425,8 +428,7 @@ function queueMenuWrite(task) {
 
 /**
  * Updates the context menu to reflect the current set of noisy tabs.
- * Skips all work if the tab list and mute states match the previous render; updates items in
- * place when only labels changed; falls back to a full rebuild when tabs were added or removed.
+ * Skips all work if the tab list and mute states match the previous render; otherwise rebuilds.
  * @returns {Promise<void>}
  */
 function updateAll() {
@@ -445,23 +447,7 @@ async function updateAllNow() {
     lastMenuSnapshot = snapshot;
 
     if (noisyTabsList.length === 0) {
-      renderedTabs = null; // set before the async removeAll so a queued update can't diff against a stale menu
-      chrome.contextMenus.removeAll(() => {
-        chrome.contextMenus.create({
-          id: "shush-menu",
-          title: "Shush!",
-          contexts: ["all"]
-        }, () => { if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError); });
-        chrome.contextMenus.create({
-          id: "find-noisy-tabs",
-          parentId: "shush-menu",
-          title: chrome.i18n.getMessage('menuFindNoisyTabs'),
-          contexts: ["all"]
-        }, () => { if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError); });
-      });
-    } else if (canDiffMenu(noisyTabsList)) {
-      applyMenuDiff(noisyTabsList);
-      renderedTabs = noisyTabsList;
+      chrome.contextMenus.removeAll(createFindMenu);
     } else {
       await showNoisyTabsInMenu(noisyTabsList);
     }
@@ -480,7 +466,7 @@ async function updateAllNow() {
 function buildNoisyTabsList(noisyTabs, currentActiveTab) {
   const noisyTabsList = [];
   for (const tab of noisyTabs) {
-    if (!tab.url?.startsWith('http')) continue;
+    if (!isWebTab(tab)) continue;
     noisyTabsList.push({
       id: tab.id,
       title: tab.title || chrome.i18n.getMessage('untitled'),
@@ -544,6 +530,21 @@ function logContextMenuError() {
   if (chrome.runtime.lastError) console.error('Context menu error:', chrome.runtime.lastError);
 }
 
+/** The collapsed menu: "Shush!" with a single "Find Noisy Tabs" child. */
+function createFindMenu() {
+  chrome.contextMenus.create({
+    id: "shush-menu",
+    title: "Shush!",
+    contexts: ["all"]
+  }, logContextMenuError);
+  chrome.contextMenus.create({
+    id: "find-noisy-tabs",
+    parentId: "shush-menu",
+    title: chrome.i18n.getMessage('menuFindNoisyTabs'),
+    contexts: ["all"]
+  }, logContextMenuError);
+}
+
 /**
  * Builds the parent menu label for a noisy tab: title, trimmed to 30 chars and stripped of any
  * leading notification count, plus the "(current tab)" and "(muted)" suffixes.
@@ -551,11 +552,9 @@ function logContextMenuError() {
  * @returns {string}
  */
 function tabMenuTitle(tab) {
-  const cleanTitle = tab.title.replace(/^\(\d+\)\s*/, '');
-  const tabTitle = cleanTitle.length > 30 ? cleanTitle.substring(0, 27) + '...' : cleanTitle;
   const currentLabel = tab.isCurrentTab ? ` ${chrome.i18n.getMessage('menuCurrentTab')}` : '';
   const mutedLabel = tab.muted ? ` ${chrome.i18n.getMessage('menuMuted')}` : '';
-  return `${tabTitle}${currentLabel}${mutedLabel}`;
+  return `${shortTitle(cleanTabTitle(tab.title))}${currentLabel}${mutedLabel}`;
 }
 
 /**
@@ -591,42 +590,6 @@ function createTabChildItems(tab) {
   }, logContextMenuError);
 }
 
-// What the menu currently shows, or null when it is not in the noisy-tab state (never built,
-// or rebuilt as the empty "Find Noisy Tabs" menu). Gates the in-place diff in applyMenuDiff.
-let renderedTabs = null;
-
-/**
- * Updates the existing menu in place to match noisyTabsList, without a removeAll() + rebuild.
- * Only valid when the tab IDs are unchanged and in the same order — chrome.contextMenus has no
- * reorder API, so anything that would change positions has to go through the full rebuild instead.
- * @param {Array<{id: number, title: string, muted: boolean, isCurrentTab: boolean}>} noisyTabsList
- */
-function applyMenuDiff(noisyTabsList) {
-  const previousById = new Map(renderedTabs.map(t => [t.id, t]));
-
-  for (const tab of noisyTabsList) {
-    const previous = previousById.get(tab.id);
-    const itemId = `noisy-tab-${tab.id}`;
-
-    if (previous.muted !== tab.muted || previous.isCurrentTab !== tab.isCurrentTab || previous.title !== tab.title) {
-      chrome.contextMenus.update(itemId, { title: tabMenuTitle(tab) }).catch(() => {});
-    }
-
-    if (previous.isCurrentTab !== tab.isCurrentTab) {
-      // Became the current tab: drop its actions. Stopped being it: recreate them. Recreating
-      // appends under this parent only, so sibling order at the top level is untouched.
-      if (tab.isCurrentTab) {
-        chrome.contextMenus.remove(`${itemId}-switch`).catch(() => {});
-        chrome.contextMenus.remove(`${itemId}-mute`).catch(() => {});
-      } else {
-        createTabChildItems(tab);
-      }
-    } else if (!tab.isCurrentTab && previous.muted !== tab.muted) {
-      chrome.contextMenus.update(`${itemId}-mute`, { title: muteItemTitle(tab) }).catch(() => {});
-    }
-  }
-}
-
 /**
  * Clears the Shush! context menu and rebuilds it with one sub-tree per noisy tab.
  * Uses a Promise wrapper because chrome.contextMenus only exposes callback-style APIs.
@@ -653,7 +616,6 @@ function showNoisyTabsInMenu(noisyTabsList) {
         if (!tab.isCurrentTab) createTabChildItems(tab);
       });
 
-      renderedTabs = noisyTabsList;
       // Record the fingerprint here rather than only in updateAll: scanAndShowResults renders
       // through this function too, and if it left lastMenuSnapshot stale, a later updateAll
       // could match the stale value and skip a rebuild the menu actually needed.

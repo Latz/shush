@@ -1,14 +1,15 @@
 /* ── Color tokens ── */
+
 /* color-scheme sits on :root so light-dark() below resolves against it */
 :root {
 	color-scheme: light dark;
 
-	--bg:         light-dark(#ffffff, #202124);
-	--text:       light-dark(#000000, #e8eaed);
-	--heading:    light-dark(#333333, #e8eaed);
+	--bg:         light-dark(#fff, #202124);
+	--text:       light-dark(#000, #e8eaed);
+	--heading:    light-dark(#333, #e8eaed);
 	--card-bg:    light-dark(#f5f5f5, #303134);
 	--card-hover: light-dark(#e0e0e0, #3c3f41);
-	--muted-text: light-dark(#666666, #9aa0a6);
+	--muted-text: light-dark(#666, #9aa0a6);
 	--btn-switch: light-dark(#2e7d32, #388e3c);
 	--btn-mute:   light-dark(#c62828, #e53935);
 	--btn-unmute: light-dark(#1565c0, #1e88e5);
@@ -119,6 +120,12 @@ button {
 	padding-inline: 8px;
 	margin-block-end: 10px;
 	font-size: 13px;
+}
+
+/* `display` on the class above beats the UA rule for [hidden], which left an empty,
+   unlabelled button on screen whenever there was nothing to mute. */
+.mute-all-btn[hidden] {
+	display: none;
 }
 
 .mute-all-btn:disabled {

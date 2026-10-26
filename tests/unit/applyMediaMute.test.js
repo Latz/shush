@@ -17,6 +17,7 @@ beforeEach(() => {
   delete globalThis.__shushMutedDescriptor;
   delete globalThis.__shushActive;
   delete globalThis.__shushObserver;
+  delete globalThis.__shushPrior;
   Object.defineProperty(HTMLMediaElement.prototype, 'muted', ORIGINAL_MUTED);
 });
 
@@ -103,12 +104,33 @@ describe('applyMediaMute — unmuting', () => {
   });
 
   test('resumes media the page paused while muted', () => {
+    const el = addMedia('audio', { paused: false });
+    applyMediaMute(true);
+    Object.defineProperty(el, 'paused', { value: true, configurable: true });
+
+    applyMediaMute(false);
+
+    expect(el.play).toHaveBeenCalled();
+  });
+
+  test('does not start media that was already paused before the mute', () => {
     const paused = addMedia('audio', { paused: true });
     applyMediaMute(true);
 
     applyMediaMute(false);
 
-    expect(paused.play).toHaveBeenCalled();
+    expect(paused.play).not.toHaveBeenCalled();
+  });
+
+  test('leaves media the page had muted itself muted on release', () => {
+    const el = addMedia('video');
+    el.muted = true;
+    applyMediaMute(true);
+    applyMediaMute(true); // a re-inject must not record our own mute as the original
+
+    applyMediaMute(false);
+
+    expect(el.muted).toBe(true);
   });
 
   test('does not resume media that has ended or is already playing', () => {
@@ -123,9 +145,10 @@ describe('applyMediaMute — unmuting', () => {
   });
 
   test('a rejected play() does not propagate', () => {
-    const paused = addMedia('audio', { paused: true });
+    const paused = addMedia('audio', { paused: false });
     paused.play = vi.fn().mockRejectedValue(new Error('NotAllowedError'));
     applyMediaMute(true);
+    Object.defineProperty(paused, 'paused', { value: true, configurable: true });
 
     expect(() => applyMediaMute(false)).not.toThrow();
   });

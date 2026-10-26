@@ -114,3 +114,41 @@ describe('service worker startup — shushMutedTabs restore', () => {
     expect(bg.shushMutedTabs.size).toBe(0);
   });
 });
+
+describe('onMessage handler - muteTabs batch', () => {
+  test('mutes every tab but saves and schedules once for the whole batch', async () => {
+    const bg = await import('../../background.js');
+    chrome.tabs.update.mockResolvedValue({ mutedInfo: { muted: true } });
+    chrome.storage.local.set.mockClear();
+    const sendResponse = vi.fn();
+    onMessageHandler({ action: 'muteTabs', tabIds: [5, 6, 7], muted: true }, null, sendResponse);
+    await new Promise(r => setTimeout(r, 0));
+    expect(chrome.tabs.update).toHaveBeenCalledTimes(3);
+    expect([...bg.shushMutedTabs].toSorted((a, b) => a - b)).toEqual([5, 6, 7]);
+    expect(chrome.storage.local.set).toHaveBeenCalledTimes(1);
+    expect(sendResponse).toHaveBeenCalledWith({ ok: true });
+  });
+
+  test('one tab that fails does not stop the others', async () => {
+    const bg = await import('../../background.js');
+    chrome.tabs.update.mockImplementation(id => id === 6
+      ? Promise.reject(new Error('No tab with id: 6'))
+      : Promise.resolve({ mutedInfo: { muted: true } }));
+    onMessageHandler({ action: 'muteTabs', tabIds: [5, 6, 7], muted: true }, null, vi.fn());
+    await new Promise(r => setTimeout(r, 0));
+    expect([...bg.shushMutedTabs].toSorted((a, b) => a - b)).toEqual([5, 7]);
+  });
+
+  test.each([
+    ['non-array tabIds', { tabIds: 5, muted: true }],
+    ['a non-integer id', { tabIds: [5, 'x'], muted: true }],
+    ['a negative id', { tabIds: [-1], muted: true }],
+    ['non-boolean muted', { tabIds: [5], muted: 'yes' }],
+  ])('rejects %s', (_name, payload) => {
+    const sendResponse = vi.fn();
+    const result = onMessageHandler({ action: 'muteTabs', ...payload }, null, sendResponse);
+    expect(result).toBeUndefined();
+    expect(sendResponse).toHaveBeenCalledWith({ error: 'invalid' });
+    expect(chrome.tabs.update).not.toHaveBeenCalled();
+  });
+});

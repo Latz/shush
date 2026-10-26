@@ -4,7 +4,7 @@
  * Reads the Vivaldi-specific workspace ID off a tab, if present.
  * Undocumented field (vivExtData); absent entirely on Chrome, so this is a natural no-op there.
  * Normalizes to Number since Vivaldi has been observed reporting the same ID as either an int or a float.
- * @param {chrome.tabs.Tab} tab
+ * @param {chrome.tabs.Tab & {vivExtData?: string}} tab
  * @returns {number|null}
  */
 export function getVivaldiWorkspaceId(tab) {

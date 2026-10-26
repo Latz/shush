@@ -35,6 +35,26 @@ describe('tabs.onUpdated listener (filtered)', () => {
   });
 });
 
+describe('tabs.onUpdated native unmute', () => {
+  test('forgets a shush-muted tab the user unmuted with the browser control and releases the page hold', async () => {
+    background.shushMutedTabs.add(5);
+    const listener = getUpdatedListener();
+    await listener(5, { mutedInfo: { muted: false, reason: 'user' } });
+    expect(background.shushMutedTabs.has(5)).toBe(false);
+    expect(chrome.storage.local.set).toHaveBeenCalledWith({ shush_muted_tabs: [] });
+    expect(chrome.scripting.executeScript).toHaveBeenCalledWith(
+      expect.objectContaining({ args: [false], target: expect.objectContaining({ tabId: 5 }) })
+    );
+  });
+
+  test('keeps the tab when the unmute came from the extension itself', async () => {
+    background.shushMutedTabs.add(5);
+    const listener = getUpdatedListener();
+    await listener(5, { mutedInfo: { muted: false, reason: 'extension', extensionId: 'x' } });
+    expect(background.shushMutedTabs.has(5)).toBe(true);
+  });
+});
+
 describe('tabs.onActivated listener', () => {
   test('triggers a debounced update when the active tab changes', () => {
     const listener = chrome.tabs.onActivated.addListener.mock.calls[0][0];
@@ -83,10 +103,33 @@ describe('fetchNoisyData pruning', () => {
     await background.restored;
     background.shushMutedTabs.add(1);
     background.shushMutedTabs.add(2);
-    chrome.tabs.query.mockResolvedValue([{ id: 1, url: 'https://a.com', audible: false }]);
-    await background.fetchNoisyData();
+    chrome.tabs.get.mockImplementation(id => id === 1
+      ? Promise.resolve({ id: 1, url: 'https://a.com', audible: false })
+      : Promise.reject(new Error('No tab with id: 2')));
+    const { noisyTabs } = await background.fetchNoisyData();
     expect([...background.shushMutedTabs]).toEqual([1]);
+    expect(noisyTabs.map(t => t.id)).toEqual([1]);
     expect(chrome.storage.local.set).toHaveBeenCalledWith({ shush_muted_tabs: [1] });
+  });
+
+  test('never serialises every tab: muted tabs are fetched by id', async () => {
+    await background.restored;
+    background.shushMutedTabs.add(1);
+    chrome.tabs.get.mockResolvedValue({ id: 1, url: 'https://a.com', audible: false });
+    await background.fetchNoisyData();
+    expect(chrome.tabs.query).not.toHaveBeenCalledWith({});
+    expect(chrome.tabs.get).toHaveBeenCalledWith(1);
+  });
+
+  test('a muted tab that is also audible is listed once, in tab order', async () => {
+    await background.restored;
+    background.shushMutedTabs.add(1);
+    chrome.tabs.query.mockImplementation(f => Promise.resolve(f.audible
+      ? [{ id: 1, windowId: 1, index: 3, audible: true }, { id: 2, windowId: 1, index: 1, audible: true }]
+      : []));
+    chrome.tabs.get.mockResolvedValue({ id: 1, windowId: 1, index: 3, audible: true });
+    const { noisyTabs } = await background.fetchNoisyData();
+    expect(noisyTabs.map(t => t.id)).toEqual([2, 1]);
   });
 });
 

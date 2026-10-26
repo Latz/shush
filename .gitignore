@@ -32,6 +32,7 @@ CLAUDE.local.md
 enhancements.md
 
 # Environment variables (secrets)
+.env
 .envrc
 
 # Git worktrees
@@ -46,6 +47,11 @@ DEADJOE
 .scannerwork/
 reports/
 sonar-issues.md
+sonar-issues.json
+sonar-report.json
 *_review*.md
 code_review*.md
 performance_review*.md
+
+# Stryker
+.stryker-tmp/
