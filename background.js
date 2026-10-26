@@ -15,20 +15,31 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     (async () => {
       try {
         await restored;
-        const tab = await chrome.tabs.update(tabId, { muted });
-        const actualMuted = tab.mutedInfo?.muted ?? muted;
-        injectMediaMute(tabId, actualMuted);
-        if (actualMuted) {
-          shushMutedTabs.add(tabId);
-        } else {
-          shushMutedTabs.delete(tabId);
-        }
+        const actualMuted = await muteOneTab(tabId, muted);
         saveShushMutedTabs();
         scheduleUpdate();
         sendResponse({ muted: actualMuted });
       } catch {
         sendResponse({ muted });
       }
+    })();
+    return true; // keep channel open for async response
+  }
+  if (message?.action === 'muteTabs') {
+    const { tabIds, muted } = message;
+    if (!Array.isArray(tabIds) || tabIds.some(id => !Number.isInteger(id) || id <= 0)
+        || typeof muted !== 'boolean') {
+      sendResponse({ error: 'invalid' });
+      return;
+    }
+    (async () => {
+      await restored;
+      // allSettled: one closed tab must not stop the rest. One save and one update for the
+      // whole batch instead of one per tab.
+      await Promise.allSettled(tabIds.map(id => muteOneTab(id, muted)));
+      saveShushMutedTabs();
+      scheduleUpdate();
+      sendResponse({ ok: true });
     })();
     return true; // keep channel open for async response
   }
@@ -42,10 +53,32 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   return true; // keep channel open for async response
 });
 
+/**
+ * Mutes or unmutes one tab and records it in shushMutedTabs. Does not save or schedule an update:
+ * callers do that once, so a batch costs one write instead of one per tab.
+ * @param {number} tabId
+ * @param {boolean} muted
+ * @returns {Promise<boolean>} the mute state the browser reports afterwards.
+ */
+async function muteOneTab(tabId, muted) {
+  const tab = await chrome.tabs.update(tabId, { muted });
+  const actualMuted = tab.mutedInfo?.muted ?? muted;
+  injectMediaMute(tabId, actualMuted);
+  if (actualMuted) {
+    shushMutedTabs.add(tabId);
+  } else {
+    shushMutedTabs.delete(tabId);
+  }
+  return actualMuted;
+}
+
 // Timestamp of the last injection per tab, used by reinjectMediaMute to skip redundant
 // re-injections. Entries are dropped in tabs.onRemoved.
 const lastInjectAt = new Map();
-const REINJECT_COOLDOWN_MS = 1000;
+// The injected prototype patch and observer already hold the mute, so a re-run only helps
+// for frames added since; 10 s is plenty for that and keeps a tab that flips `audible` every
+// few seconds from re-running the script in every frame each time.
+const REINJECT_COOLDOWN_MS = 10_000;
 
 /**
  * Injects a content script (main world) that mutes/unmutes all audio and video elements in a tab.
@@ -341,45 +374,40 @@ chrome.tabs.onActivated.addListener(() => {
 });
 
 /**
- * Drops shushMutedTabs entries whose tab no longer exists (missed onRemoved, e.g. while the
- * worker was down), so they can neither linger in storage nor match a recycled ID.
- * @param {chrome.tabs.Tab[]} allTabs - The full chrome.tabs.query({}) result.
- */
-function pruneClosedMutedTabs(allTabs) {
-  const openIds = new Set(allTabs.map(t => t.id));
-  let changed = false;
-  for (const id of shushMutedTabs) {
-    if (openIds.has(id)) {
-      continue;
-    }
-
-    shushMutedTabs.delete(id);
-    lastInjectAt.delete(id);
-    changed = true;
-  }
-  if (changed) saveShushMutedTabs();
-}
-
-/**
  * Fetches the noisy tabs and the focused active tab, then derives the noisy-tab list locally.
- * Exactly one tab query is issued, chosen up front: the full chrome.tabs.query({}) is the only
- * way to resolve muted (and therefore no longer audible) tabs without one chrome.tabs.get() per
- * tab, but it serializes every open tab — wasted payload on every scheduleUpdate() tick when
- * nothing is muted, where the far smaller audible-only query answers the same question.
+ * Audible tabs come from the small audible-only query; shush-muted tabs (no longer audible once
+ * muted) are fetched by ID — bounded by the muted count, usually 1-3 — instead of serialising
+ * every open tab with chrome.tabs.query({}) on every tab switch. A muted ID that no longer
+ * resolves is dropped (missed onRemoved, e.g. while the worker was down), so it can neither
+ * linger in storage nor match a recycled ID.
  * Shared by updateAll and scanAndShowResults to avoid duplicate queries.
  * @returns {Promise<{noisyTabs: chrome.tabs.Tab[], currentActiveTab: chrome.tabs.Tab|undefined}>}
  */
 async function fetchNoisyData() {
-  await restored; // shushMutedTabs picks the query below
-  const needsAllTabs = shushMutedTabs.size > 0;
-  const [tabs, [currentActiveTab]] = await Promise.all([
-    needsAllTabs ? chrome.tabs.query({}) : chrome.tabs.query({ audible: true }),
-    chrome.tabs.query({ active: true, lastFocusedWindow: true })
+  await restored; // shushMutedTabs picks the lookups below
+  const [audibleTabs, [currentActiveTab], mutedLookups] = await Promise.all([
+    chrome.tabs.query({ audible: true }),
+    chrome.tabs.query({ active: true, lastFocusedWindow: true }),
+    Promise.all([...shushMutedTabs].map(id =>
+      chrome.tabs.get(id).then(tab => ({ id, tab }), () => ({ id, tab: null }))))
   ]);
-  if (needsAllTabs) pruneClosedMutedTabs(tabs);
-  const noisyTabs = needsAllTabs
-    ? tabs.filter(t => t.audible || shushMutedTabs.has(t.id))
-    : tabs;
+
+  const byId = new Map(audibleTabs.map(t => [t.id, t]));
+  let pruned = false;
+  for (const { id, tab } of mutedLookups) {
+    if (!tab) {
+      shushMutedTabs.delete(id);
+      lastInjectAt.delete(id);
+      pruned = true;
+    } else if (!byId.has(tab.id)) {
+      byId.set(tab.id, tab);
+    }
+  }
+  if (pruned) saveShushMutedTabs();
+  // Same order query({}) gave: by window, then position, so a muted tab that turns audible
+  // again does not jump and force a menu rebuild.
+  const noisyTabs = byId.values().toArray()
+    .toSorted((x, y) => (x.windowId ?? 0) - (y.windowId ?? 0) || (x.index ?? 0) - (y.index ?? 0));
   return { noisyTabs, currentActiveTab };
 }
 

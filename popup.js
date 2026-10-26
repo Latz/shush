@@ -92,10 +92,9 @@ function updateMuteAllButton() {
 async function muteAllVisibleTabs() {
   const targets = tabDataMap.values().filter(tab => !tab.muted).toArray();
   if (targets.length === 0) return;
-  // allSettled: one closed/failed tab shouldn't stop the rest from being muted
-  await Promise.allSettled(
-    targets.map(tab => chrome.runtime.sendMessage({ action: 'muteTab', tabId: tab.id, muted: true }))
-  );
+  // One message for the whole batch: the worker saves and refreshes the menu once, not per tab.
+  await chrome.runtime.sendMessage({ action: 'muteTabs', tabIds: targets.map(tab => tab.id), muted: true })
+    .catch(() => {}); // reload below shows whatever state resulted
   await loadNoisyTabs();
 }
 

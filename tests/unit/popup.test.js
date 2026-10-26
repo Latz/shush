@@ -231,7 +231,7 @@ describe('Mute All', () => {
     expect(document.querySelector('#mute-all-btn').hidden).toBe(true);
   });
 
-  test('clicking sends one muteTab message per unmuted tab, none for already-muted tabs', async () => {
+  test('clicking sends one muteTabs message with only the unmuted tabs', async () => {
     const unmuted = { id: 2, url: 'https://music.com', title: 'Music', favIconUrl: '', mutedInfo: { muted: false } };
     const muted = { id: 3, url: 'https://video.com', title: 'Video', favIconUrl: '', mutedInfo: { muted: true } };
     chrome.runtime.sendMessage = vi.fn().mockImplementation((msg) => {
@@ -241,12 +241,8 @@ describe('Mute All', () => {
     await loadPopup([unmuted, muted]);
     document.querySelector('#mute-all-btn').click();
     await new Promise(r => setTimeout(r, 50));
-    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ action: 'muteTab', tabId: 2, muted: true })
-    );
-    expect(chrome.runtime.sendMessage).not.toHaveBeenCalledWith(
-      expect.objectContaining({ action: 'muteTab', tabId: 3 })
-    );
+    const batches = chrome.runtime.sendMessage.mock.calls.map(c => c[0]).filter(m => m.action === 'muteTabs');
+    expect(batches).toEqual([{ action: 'muteTabs', tabIds: [2], muted: true }]);
   });
 
   test('after clicking, the list re-renders with those tabs muted and the button hides again', async () => {
@@ -254,9 +250,9 @@ describe('Mute All', () => {
     let shushMuted = [];
     chrome.runtime.sendMessage = vi.fn().mockImplementation((msg) => {
       if (msg.action === 'getShushMutedTabs') return Promise.resolve(shushMuted);
-      if (msg.action === 'muteTab') {
-        shushMuted = [...shushMuted, msg.tabId];
-        return Promise.resolve({ muted: true });
+      if (msg.action === 'muteTabs') {
+        shushMuted = [...shushMuted, ...msg.tabIds];
+        return Promise.resolve({ ok: true });
       }
       return Promise.resolve({});
     });

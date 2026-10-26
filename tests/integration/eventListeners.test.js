@@ -103,10 +103,33 @@ describe('fetchNoisyData pruning', () => {
     await background.restored;
     background.shushMutedTabs.add(1);
     background.shushMutedTabs.add(2);
-    chrome.tabs.query.mockResolvedValue([{ id: 1, url: 'https://a.com', audible: false }]);
-    await background.fetchNoisyData();
+    chrome.tabs.get.mockImplementation(id => id === 1
+      ? Promise.resolve({ id: 1, url: 'https://a.com', audible: false })
+      : Promise.reject(new Error('No tab with id: 2')));
+    const { noisyTabs } = await background.fetchNoisyData();
     expect([...background.shushMutedTabs]).toEqual([1]);
+    expect(noisyTabs.map(t => t.id)).toEqual([1]);
     expect(chrome.storage.local.set).toHaveBeenCalledWith({ shush_muted_tabs: [1] });
+  });
+
+  test('never serialises every tab: muted tabs are fetched by id', async () => {
+    await background.restored;
+    background.shushMutedTabs.add(1);
+    chrome.tabs.get.mockResolvedValue({ id: 1, url: 'https://a.com', audible: false });
+    await background.fetchNoisyData();
+    expect(chrome.tabs.query).not.toHaveBeenCalledWith({});
+    expect(chrome.tabs.get).toHaveBeenCalledWith(1);
+  });
+
+  test('a muted tab that is also audible is listed once, in tab order', async () => {
+    await background.restored;
+    background.shushMutedTabs.add(1);
+    chrome.tabs.query.mockImplementation(f => Promise.resolve(f.audible
+      ? [{ id: 1, windowId: 1, index: 3, audible: true }, { id: 2, windowId: 1, index: 1, audible: true }]
+      : []));
+    chrome.tabs.get.mockResolvedValue({ id: 1, windowId: 1, index: 3, audible: true });
+    const { noisyTabs } = await background.fetchNoisyData();
+    expect(noisyTabs.map(t => t.id)).toEqual([2, 1]);
   });
 });
 
