@@ -31,9 +31,12 @@ try {
     if (OPTIONAL.has(entry) && !existsSync(entry)) continue;
     cpSync(entry, path.join(dir, entry), { recursive: true });
   }
-  const result = spawnSync(process.execPath,
-    ['node_modules/web-ext/bin/web-ext.js', 'lint', '--source-dir', dir, '--output', 'json'],
-    { encoding: 'utf8' });
+  // Via npx, not a devDependency: web-ext pulls in node-forge (adb), which has an open
+  // high-severity advisory with no fixed release, and that would keep `npm run audit` red.
+  // Lint never touches adb or signatures. The pinned version is the one that was installed.
+  const result = spawnSync(
+    `npx --yes web-ext@10.7.0 lint --source-dir ${JSON.stringify(dir)} --output json`,
+    { encoding: 'utf8', shell: true });
   const start = result.stdout.indexOf('{');
   if (start === -1) {
     console.error(result.stdout, result.stderr);

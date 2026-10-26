@@ -11,8 +11,9 @@ export default defineConfig({
       reporter: ['lcov', 'text'],
       reportsDirectory: 'coverage',
       include: ['background.js', 'popup.js', 'shared/*.js'],
-      // Just under the measured 96/91/100 so only a real regression fails the run.
-      thresholds: { lines: 94, statements: 94, functions: 98, branches: 88 },
+      // Just under the measured 96/93/88/91 (vitest 5's v8 provider counts functions and
+      // statements more strictly than 3.x did) so only a real regression fails the run.
+      thresholds: { lines: 94, statements: 92, functions: 86, branches: 88 },
     },
   },
 });
