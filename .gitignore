@@ -47,6 +47,8 @@ DEADJOE
 .scannerwork/
 reports/
 sonar-issues.md
+sonar-issues.json
+sonar-report.json
 *_review*.md
 code_review*.md
 performance_review*.md

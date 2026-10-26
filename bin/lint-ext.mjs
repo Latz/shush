@@ -4,15 +4,19 @@
 // web-ext is Mozilla's linter, so it flags things that are wrong for Firefox but fine for
 // this Chrome-only extension. Those codes are listed in FIREFOX_ONLY; anything else, error
 // or warning, fails the run.
-import { cpSync, mkdtempSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import path from 'node:path';
+import process from 'node:process';
 import { spawnSync } from 'node:child_process';
 
 const SHIPPED = [
   'manifest.json', 'background.js', 'popup.html', 'popup.js', 'popup.css',
   'shared', 'icons', '_locales',
 ];
+
+// A missing entry here is skipped; any other missing file must fail the run.
+const OPTIONAL = new Set(['shared', 'icons', '_locales']);
 
 const FIREFOX_ONLY = new Set([
   'BACKGROUND_SERVICE_WORKER_NOFALLBACK', // Firefox wants background.scripts
@@ -21,9 +25,12 @@ const FIREFOX_ONLY = new Set([
   'MISSING_DATA_COLLECTION_PERMISSIONS',  // Firefox data-consent key
 ]);
 
-const dir = mkdtempSync(join(tmpdir(), 'shush-ext-'));
+const dir = mkdtempSync(path.join(tmpdir(), 'shush-ext-'));
 try {
-  for (const entry of SHIPPED) cpSync(entry, join(dir, entry), { recursive: true });
+  for (const entry of SHIPPED) {
+    if (OPTIONAL.has(entry) && !existsSync(entry)) continue;
+    cpSync(entry, path.join(dir, entry), { recursive: true });
+  }
   const result = spawnSync(process.execPath,
     ['node_modules/web-ext/bin/web-ext.js', 'lint', '--source-dir', dir, '--output', 'json'],
     { encoding: 'utf8' });
@@ -36,7 +43,7 @@ try {
     const findings = [...report.errors, ...report.warnings].filter(m => !FIREFOX_ONLY.has(m.code));
     for (const m of findings) console.error(`${m.file ?? ''}:${m.line ?? ''} ${m.code} ${m.message}`);
     console.log(`web-ext lint: ${findings.length} finding(s), ${report.errors.length + report.warnings.length - findings.length} Firefox-only ignored`);
-    process.exitCode = findings.length ? 1 : 0;
+    process.exitCode = findings.length > 0 ? 1 : 0;
   }
 } finally {
   rmSync(dir, { recursive: true, force: true });
