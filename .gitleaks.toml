@@ -4,6 +4,6 @@ useDefault = true
 
 [allowlist]
 description = "Shell variable, not a literal credential"
-# bin/check(.js) calls `curl -u "${SONAR_TOKEN}:"`; the default curl-auth-user rule cannot
+# bin/check(.js) calls `curl -u "${SONAR_TOKEN}:"` and getreport.sh `curl -u "$SONAR_API_TOKEN:"`; the default curl-auth-user rule cannot
 # tell a variable reference from a hard-coded token. It flags the old bin/check in history too.
-regexes = ['''\$\{?SONAR_TOKEN\}?:''']
+regexes = ['''\$\{?SONAR_(API_)?TOKEN\}?:''']
