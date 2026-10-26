@@ -35,6 +35,26 @@ describe('tabs.onUpdated listener (filtered)', () => {
   });
 });
 
+describe('tabs.onUpdated native unmute', () => {
+  test('forgets a shush-muted tab the user unmuted with the browser control and releases the page hold', async () => {
+    background.shushMutedTabs.add(5);
+    const listener = getUpdatedListener();
+    await listener(5, { mutedInfo: { muted: false, reason: 'user' } });
+    expect(background.shushMutedTabs.has(5)).toBe(false);
+    expect(chrome.storage.local.set).toHaveBeenCalledWith({ shush_muted_tabs: [] });
+    expect(chrome.scripting.executeScript).toHaveBeenCalledWith(
+      expect.objectContaining({ args: [false], target: expect.objectContaining({ tabId: 5 }) })
+    );
+  });
+
+  test('keeps the tab when the unmute came from the extension itself', async () => {
+    background.shushMutedTabs.add(5);
+    const listener = getUpdatedListener();
+    await listener(5, { mutedInfo: { muted: false, reason: 'extension', extensionId: 'x' } });
+    expect(background.shushMutedTabs.has(5)).toBe(true);
+  });
+});
+
 describe('tabs.onActivated listener', () => {
   test('triggers a debounced update when the active tab changes', () => {
     const listener = chrome.tabs.onActivated.addListener.mock.calls[0][0];

@@ -1,65 +1,9 @@
 import { switchToTab } from './shared/vivaldi.js';
+import { cleanTabTitle, shortTitle, isWebTab } from './shared/tab-title.js';
 
 // Popup script for Shush! extension
 
 const tabDataMap = new Map();
-
-// Set when loadNoisyTabs throws; suppresses saveTabState so a transient failure can't
-// overwrite the persisted list with the empty map the error branch leaves behind.
-let loadFailed = false;
-
-/**
- * Reads the session and stored nonces. Issued inside loadNoisyTabs' Promise.all so it costs no
- * extra round-trip stage. Skipped silently on browsers (e.g. Vivaldi) that don't support
- * chrome.storage.session — loadSavedTabs() verifies each tab via tabById there, so closed/invalid
- * tabs from previous sessions are naturally filtered out without needing explicit cleanup.
- * @returns {Promise<{sessionNonce?: string, storedNonce?: string}|null>} null when unsupported.
- */
-async function readSessionNonces() {
-  if (!chrome.storage?.session) return null;
-  const [{ sessionNonce }, { shush_session_nonce: storedNonce }] = await Promise.all([
-    chrome.storage.session.get('sessionNonce'),
-    chrome.storage.local.get('shush_session_nonce'),
-  ]);
-  return { sessionNonce: /** @type {string} */ (sessionNonce), storedNonce: /** @type {string} */ (storedNonce) };
-}
-
-/**
- * Reports whether the saved tab list belongs to an earlier browser session and, if so, clears it.
- * The storage writes are fire-and-forget: the caller has already dropped the stale list in memory.
- * @param {{sessionNonce?: string, storedNonce?: string}|null} nonces
- * @returns {boolean} true when the saved list is stale and must be ignored.
- */
-function discardStaleSavedTabs(nonces) {
-  if (!nonces) return false;
-  const { sessionNonce, storedNonce } = nonces;
-  // No session nonce at all (e.g. session storage was cleared mid-session) means the session
-  // can't be told apart, so keep the list — loadSavedTabs() still filters out closed tabs.
-  if (!sessionNonce || sessionNonce === storedNonce) return false;
-  Promise.resolve(chrome.storage.local.remove('shush_saved_tabs'))
-    .then(() => chrome.storage.local.set({ shush_session_nonce: sessionNonce ?? '' }))
-    .catch(() => {});
-  return true;
-}
-
-/**
- * Filters persisted muted tabs to those still open in the current browser session.
- * Uses the shared tabById Map to avoid extra chrome.tabs.get IPC calls.
- * @param {{shush_saved_tabs?: Array<{tabId: number, muted: boolean}>}} savedData
- * @param {Map<number, chrome.tabs.Tab>} tabById
- * @returns {Array<chrome.tabs.Tab & {mutedInfo: {muted: boolean}}>}
- */
-function loadSavedTabs(savedData, tabById) {
-  const saved = savedData.shush_saved_tabs;
-  if (!saved) return [];
-  return saved
-    .filter(entry => entry.muted && tabById.has(entry.tabId))
-    .map(entry => ({
-      ...tabById.get(entry.tabId),
-      // Use saved muted state — live mutedInfo is unreliable in Vivaldi
-      mutedInfo: { muted: entry.muted }
-    }));
-}
 
 /**
  * Replaces #content with a single status line.
@@ -90,11 +34,6 @@ function toDisplayTab(tab, muted = tab.mutedInfo?.muted || false) {
     favIconUrl: tab.favIconUrl || '',
     muted
   };
-}
-
-/** Strips a leading notification count, e.g. "(3) Now Playing" → "Now Playing". */
-function cleanTabTitle(title) {
-  return title.replace(/^\(\d+\)\s*/, '');
 }
 
 /**
@@ -175,7 +114,6 @@ function renderTabs(noisyTabsList) {
   const fragment = document.createDocumentFragment();
   noisyTabsList.forEach(tab => {
     const cleanTitle = cleanTabTitle(tab.title);
-    const tabTitle = cleanTitle.length > 30 ? cleanTitle.slice(0, 27) + '...' : cleanTitle;
 
     const item = document.createElement('div');
     item.className = 'tab-item';
@@ -195,7 +133,7 @@ function renderTabs(noisyTabsList) {
     const titleDiv = document.createElement('div');
     titleDiv.className = 'tab-title';
     titleDiv.title = cleanTitle;
-    titleDiv.textContent = tabTitle;
+    titleDiv.textContent = shortTitle(cleanTitle);
     item.append(titleDiv);
 
     const actions = document.createElement('div');
@@ -218,33 +156,28 @@ function renderTabs(noisyTabsList) {
   content.replaceChildren(fragment);
 
   updateMuteAllButton();
-  saveTabState();
 }
 
 /**
- * Merges the audible, saved and background-muted tabs into one list, first source wins.
+ * Merges the audible and background-muted tabs into one list, first source wins.
  * Displayable = a real web page that is not the tab the user is already looking at.
  * @param {chrome.tabs.Tab[]} audibleTabs
- * @param {chrome.tabs.Tab[]} savedMutedTabs
  * @param {chrome.tabs.Tab[]} bgMutedTabs
  * @param {number|undefined} activeTabId
  * @returns {{allDisplayedTabs: ReturnType<typeof toDisplayTab>[], totalAudioTabs: number}}
  *   totalAudioTabs counts audible web pages including the active one, to tell "no audio
  *   anywhere" from "audio, but only where you already are".
  */
-function mergeDisplayTabs(audibleTabs, savedMutedTabs, bgMutedTabs, activeTabId) {
-  const isDisplayable = tab => tab.id !== activeTabId && tab.url?.startsWith('http');
+function mergeDisplayTabs(audibleTabs, bgMutedTabs, activeTabId) {
+  const isDisplayable = tab => tab.id !== activeTabId && isWebTab(tab);
   // One insertion-ordered Map replaces the previous three filter/map passes and the two
   // intermediate id Sets: the merge is strictly first-wins, which `has` expresses directly.
   const byId = new Map();
   let totalAudioTabs = 0;
   for (const tab of audibleTabs) {
-    if (!tab.url?.startsWith('http')) continue;
+    if (!isWebTab(tab)) continue;
     totalAudioTabs++;
     if (isDisplayable(tab)) byId.set(tab.id, toDisplayTab(tab));
-  }
-  for (const tab of savedMutedTabs) {
-    if (isDisplayable(tab) && !byId.has(tab.id)) byId.set(tab.id, toDisplayTab(tab));
   }
   for (const tab of bgMutedTabs) {
     if (isDisplayable(tab) && !byId.has(tab.id)) byId.set(tab.id, toDisplayTab(tab, true));
@@ -254,23 +187,18 @@ function mergeDisplayTabs(audibleTabs, savedMutedTabs, bgMutedTabs, activeTabId)
 
 /**
  * Entry point called on DOMContentLoaded.
- * Fetches audible, saved, and context-menu-muted tabs in parallel, then renders them.
+ * Fetches audible and shush-muted tabs in parallel, then renders them.
  * @returns {Promise<void>}
  */
 async function loadNoisyTabs() {
   showMessage(chrome.i18n.getMessage('popupScanning'));
 
   try {
-    loadFailed = false;
-
-    const [[currentActiveTab], allTabs, bgMutedIds, rawSavedData, nonces] = await Promise.all([
+    const [[currentActiveTab], allTabs, bgMutedIds] = await Promise.all([
       chrome.tabs.query({ active: true, currentWindow: true }),
       chrome.tabs.query({}),
       chrome.runtime.sendMessage({ action: 'getShushMutedTabs' }).catch(() => []),
-      chrome.storage.local.get('shush_saved_tabs'),
-      readSessionNonces(),
     ]);
-    const savedData = discardStaleSavedTabs(nonces) ? {} : rawSavedData;
 
     // Derived from allTabs rather than a second chrome.tabs.query({ audible: true }) —
     // the audible set is a strict subset, so the extra round-trip bought nothing.
@@ -278,7 +206,6 @@ async function loadNoisyTabs() {
 
     // Single map covering all open tabs — used instead of N individual chrome.tabs.get calls
     const tabById = new Map(allTabs.map(t => [t.id, t]));
-    const savedMutedTabs = loadSavedTabs(savedData, tabById);
 
     // ?? []: sendMessage resolves undefined (rather than rejecting) when no listener answers,
     // so .catch above does not cover that case.
@@ -287,7 +214,7 @@ async function loadNoisyTabs() {
       .filter(Boolean);
 
     const { allDisplayedTabs, totalAudioTabs } = mergeDisplayTabs(
-      audibleTabs, savedMutedTabs, bgMutedTabs, currentActiveTab?.id);
+      audibleTabs, bgMutedTabs, currentActiveTab?.id);
 
     if (allDisplayedTabs.length > 0) {
       renderTabs(allDisplayedTabs);
@@ -297,42 +224,13 @@ async function loadNoisyTabs() {
     tabDataMap.clear();
     showMessage(chrome.i18n.getMessage(totalAudioTabs === 0 ? 'noAudio' : 'audioCurrentTab'));
     updateMuteAllButton();
-    saveTabState();
   } catch (error) {
     console.error('Error loading noisy tabs:', error);
-    loadFailed = true;
     showMessage(chrome.i18n.getMessage('errorLoadTabs'));
     tabDataMap.clear();
     updateMuteAllButton();
   }
 }
-
-/**
- * Persists the currently-rendered tab list to chrome.storage.local.
- * Called eagerly on every state change rather than at teardown: an extension popup is torn
- * down abruptly, so an async storage write started from unload/pagehide rarely completes.
- * @returns {Promise<void>}
- */
-function saveTabState() {
-  // A failed load empties tabDataMap without that reflecting reality — writing then would
-  // discard the previous session's list over a transient error.
-  if (loadFailed) return Promise.resolve();
-  const toSave = tabDataMap.values().map(tab => ({
-    tabId: tab.id,
-    title: tab.title,
-    favIconUrl: tab.favIconUrl,
-    muted: tab.muted,
-  })).toArray();
-  // Most callers fire and forget, so a failed write is logged here instead of surfacing as an
-  // unhandled rejection.
-  return chrome.storage.local.set({ shush_saved_tabs: toSave })
-    .catch(error => { console.error('Failed to save tab state:', error); });
-}
-
-// Best-effort backstop for state changed after the last eager save. pagehide rather than the
-// deprecated unload, which browsers increasingly skip firing altogether.
-/** @listens pagehide */
-window.addEventListener('pagehide', () => { saveTabState(); });
 
 document.addEventListener('DOMContentLoaded', () => {
   // popup.html can only carry one static lang; correct it to the UI locale so screen
@@ -384,8 +282,6 @@ document.addEventListener('DOMContentLoaded', () => {
         tab.muted = !nowMuted;
         setMuteButtonState(muteBtn, tab.muted, title);
       }
-      // Persist the settled state now — the popup can be dismissed at any moment
-      saveTabState();
       updateMuteAllButton();
     }
   });

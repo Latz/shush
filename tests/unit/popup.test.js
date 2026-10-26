@@ -276,88 +276,19 @@ describe('Mute All', () => {
   });
 });
 
-describe('popup storage — loadSavedTabs', () => {
-  test('returns saved muted tabs from chrome.storage.local', async () => {
-    const savedTab = { tabId: 7, muted: true };
-    const tab7 = { id: 7, windowId: 2, url: 'https://saved.com', title: 'Saved', favIconUrl: '' };
-    // Matching nonces: the saved list belongs to the current session, so it must be honoured.
-    chrome.storage.session.get.mockResolvedValue({ sessionNonce: 'n' });
-    chrome.storage.local.get.mockResolvedValue({ shush_saved_tabs: [savedTab], shush_session_nonce: 'n' });
-    await loadPopup([], DEFAULT_ACTIVE_TAB, [tab7]);
-    expect(document.querySelectorAll('.unmute-btn').length).toBe(1);
-  });
-
-  test('returns empty array when no saved tabs in storage', async () => {
-    chrome.storage.local.get.mockResolvedValue({});
-    await loadPopup([]);
-    expect(document.querySelector('#content').innerHTML).toContain('noAudio');
-  });
-
-  test('excludes saved tabs where the tab no longer exists', async () => {
-    const savedTab = { tabId: 99, muted: true };
-    chrome.storage.local.get.mockResolvedValue({ shush_saved_tabs: [savedTab] });
-    // Tab 99 not in allTabs → tabById.has(99) is false → excluded
-    await loadPopup([], DEFAULT_ACTIVE_TAB, []);
-    expect(document.querySelector('#content').innerHTML).toContain('noAudio');
-  });
-});
-
-describe('popup storage — checkSessionNonce', () => {
-  test('clears saved tabs when session nonce has changed', async () => {
-    chrome.storage.session.get.mockResolvedValue({ sessionNonce: 'new-nonce' });
-    chrome.storage.local.get.mockImplementation((key) => {
-      if (key === 'shush_session_nonce') return Promise.resolve({ shush_session_nonce: 'old-nonce' });
-      return Promise.resolve({});
-    });
-    await loadPopup([]);
-    expect(chrome.storage.local.remove).toHaveBeenCalledWith('shush_saved_tabs');
-    expect(chrome.storage.local.set).toHaveBeenCalledWith(
-      expect.objectContaining({ shush_session_nonce: 'new-nonce' })
-    );
-  });
-
-  test('keeps saved tabs when no session nonce exists', async () => {
-    const tab7 = { id: 7, windowId: 2, url: 'https://saved.com', title: 'Saved', favIconUrl: '' };
-    chrome.storage.session.get.mockResolvedValue({});
+describe('popup does not keep its own muted list', () => {
+  test('a tab unmuted since the last popup open is not shown as muted', async () => {
+    const tab7 = { id: 7, windowId: 2, url: 'https://paused.com', title: 'Paused', favIconUrl: '', mutedInfo: { muted: false } };
+    // Leftover from the removed popup-side copy; must be ignored, the background list is the truth
     chrome.storage.local.get.mockResolvedValue({ shush_saved_tabs: [{ tabId: 7, muted: true }] });
     await loadPopup([], DEFAULT_ACTIVE_TAB, [tab7]);
-    expect(chrome.storage.local.remove).not.toHaveBeenCalled();
-    expect(document.querySelectorAll('.unmute-btn').length).toBe(1);
+    expect(document.querySelectorAll('.unmute-btn').length).toBe(0);
   });
 
-  test('skips nonce check when chrome.storage.session is unavailable', async () => {
-    const { session, ...storageWithoutSession } = chrome.storage;
-    chrome.storage = storageWithoutSession;
-    await loadPopup([]);
-    // Should not throw and should still render normally
-    expect(document.querySelector('#content')).not.toBeNull();
-  });
-});
-
-describe('popup storage — persistence', () => {
-  const bgTab = { id: 2, url: 'https://music.com', title: 'Music', favIconUrl: '', mutedInfo: { muted: false } };
-
-  test('saves displayed tabs to chrome.storage.local as soon as they are rendered', async () => {
+  test('rendering and pagehide write nothing to storage', async () => {
+    const bgTab = { id: 2, url: 'https://music.com', title: 'Music', favIconUrl: '', mutedInfo: { muted: false } };
     await loadPopup([bgTab]);
-    expect(chrome.storage.local.set).toHaveBeenCalledWith(
-      expect.objectContaining({
-        shush_saved_tabs: expect.arrayContaining([
-          expect.objectContaining({ tabId: 2 })
-        ])
-      })
-    );
-  });
-
-  test('also saves on pagehide as a backstop', async () => {
-    await loadPopup([bgTab]);
-    chrome.storage.local.set.mockClear();
     window.dispatchEvent(new Event('pagehide'));
-    expect(chrome.storage.local.set).toHaveBeenCalledWith(
-      expect.objectContaining({
-        shush_saved_tabs: expect.arrayContaining([
-          expect.objectContaining({ tabId: 2 })
-        ])
-      })
-    );
+    expect(chrome.storage.local.set).not.toHaveBeenCalled();
   });
 });
